@@ -1,0 +1,16 @@
+
+services:
+  vcs-caliptra-centos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: z.ma/vcs-caliptra-centos:dev
+    container_name: vcs-caliptra-centos-dev
+    hostname: vcs-caliptra-centos-dev
+    tty: true
+    stdin_open: true
+    volumes:
+      - /home/z.ma/caliptra-sim/caliptra-workspace:/home/caliptra-vcs-usr/caliptra-workspace
+      - /tools/Syncopsys:/tools/Synopsys:ro  # Mount your VCS install, read-only
+    working_dir: /home/caliptra-vcs-usr/caliptra-workspace
+    command: /bin/bash
