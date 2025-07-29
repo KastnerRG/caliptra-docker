@@ -4,13 +4,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: ${UID}
+        GID: ${GID}
     image: z.ma/vcs-caliptra-centos:dev
-    container_name: vcs-caliptra-centos-dev
-    hostname: vcs-caliptra-centos-dev
+    container_name: caliptra-${USER}
+    environment:
+      - DISPLAY=${DISPLAY}
+    hostname: ${HOSTNAME_VAR}
     tty: true
     stdin_open: true
     volumes:
-      - /home/z.ma/caliptra-sim/caliptra-workspace:/home/caliptra-vcs-usr/caliptra-workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ~/caliptra-docker/ws:/home/usr/ws
       - /tools/Syncopsys:/tools/Synopsys:ro  # Mount your VCS install, read-only
-    working_dir: /home/caliptra-vcs-usr/caliptra-workspace
-    command: /bin/bash
+    working_dir: /home/usr/ws
+    command: tail -f /dev/null

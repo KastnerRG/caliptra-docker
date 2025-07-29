@@ -33,10 +33,6 @@ RUN sed -i 's|mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-*.repo && \
     sed -i 's|# baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo && \
     sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo && \
     sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
-#RUN sed -i 's|mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-SCLo-scl.repo && \
-#    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-SCLo-scl.repo && \
-#    sed -i 's|mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo && \
-#    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
 
 RUN yum -y install devtoolset-9 && \
     yum clean all
@@ -84,8 +80,8 @@ RUN    git clone --recursive https://github.com/riscv/riscv-gnu-toolchain -b ${T
     && rm -rf riscv-gnu-toolchain
 
 # Set Caliptra-related environment variables
-ENV CALIPTRA_WORKSPACE=/home/caliptra-vcs-usr/caliptra-workspace
-ENV CALIPTRA_ROOT=$CALIPTRA_WORKSPACE/chipsalliance/caliptra-rtl
+ENV CALIPTRA_WORKSPACE=/home/usr/ws
+ENV CALIPTRA_ROOT=$CALIPTRA_WORKSPACE/usr/caliptra-rtl
 ENV ADAMSBRIDGE_ROOT=$CALIPTRA_ROOT/submodules/adams-bridge
 ENV CALIPTRA_AXI4PC_DIR=$CALIPTRA_ROOT/src/integration/tb
 
@@ -95,14 +91,17 @@ RUN yum install -y \
     time
     
 # Step 3: Change to non-root user
-ARG USERNAME=caliptra-vcs-usr
-ARG USER_UID=1003
-ARG USER_GID=1004
+ARG USERNAME=usr
+ARG UID=1000
+ARG GID=1000
 
-RUN groupadd --gid ${USER_GID} ${USERNAME} \
-    && useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME} \
+RUN groupadd --gid ${GID} ${USERNAME} \
+    && useradd --uid ${UID} --gid ${GID} -m ${USERNAME} \
     && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} \
     && chown -R ${USERNAME}:${USERNAME} /opt/riscv
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
+
+RUN force_color_prompt=yes
+ENV PS1="\e[0;33m[\u@\h \W]\$ \e[m "
