@@ -7,6 +7,7 @@ services:
       args:
         UID: ${UID}
         GID: ${GID}
+        USERNAME: ${USER}
     image: z.ma/vcs-caliptra-centos:dev
     container_name: caliptra-${USER}
     environment:
@@ -16,7 +17,7 @@ services:
     stdin_open: true
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - ~/caliptra-docker/ws:/home/usr/ws
+      - ./ws:/home/usr/ws
       - /tools/Syncopsys:/tools/Synopsys:ro  # Mount your VCS install, read-only
     working_dir: /home/usr/ws
     command: tail -f /dev/null
