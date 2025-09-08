@@ -8,7 +8,7 @@ services:
         UID: ${UID}
         GID: ${GID}
         USERNAME: ${USER}
-    image: z.ma/vcs-caliptra-centos:dev
+    image: ${USER}/vcs-caliptra-centos:dev
     container_name: caliptra-${USER}
     environment:
       - DISPLAY=${DISPLAY}
