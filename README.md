@@ -44,23 +44,37 @@ ws/
 Inside the docker container (in `ws` folder)
 
 ```sh
-make test=
+make list # Print a list of tests
+make test=<test>
 ```
 
-test:
+eg. tests:
 * hello_world_iccm
 * hello_world_vcs
 * smoke_test_sha256
 * smoke_test_veer
 * smoke_test_aes_gcm
 
-Tests: [ws/usr/caliptra-rtl/src/integration/test_suites](https://github.com/zhenghuama/caliptra-rtl/tree/main/src/integration/test_suites)
-UVM tests: [ws/usr/caliptra-rtl/src/integration/uvmf_caliptra_top/uvmf_template_output/project_benches/caliptra_top/tb/tests/src](https://github.com/zhenghuama/caliptra-rtl/tree/main/src/integration/uvmf_caliptra_top/uvmf_template_output/project_benches/caliptra_top/tb/tests/src)
+## Key Files
 
-## Xsim AES
+* top RTL: `src/riscv_core/veer_el2/rtl/el2_veer_wrapper.sv`
+* top TB: `src/integration/tb/caliptra_top_tb.sv`
+* SoC IFC: `src/soc_ifc/rtl/soc_ifc_top.sv`
+* Software `(c): src/integration/test_suites/${test}`
+* Include dirs: `src/integration/config/caliptra_top_tb.vf`
 
-Not sure what this is:
+How tests are loaded:
 
-```
+* `$(CALIPTRA_ROOT)/tools/scripts/Makefile test=$(test)`
+* This generates:
+  * `program.hex` - the primary program image 
+  * `iccm.hex` - data to preload into the ICCM (Instruction Closely Coupled Memory) inside the core subsystem.
+  * `dccm.hex` - data to preload into the DCCM (Data Closely Coupled Memory).
+  * `mailbox.hex` - contents for the mailbox SRAM.
+* Testbench loads them
+
+<!-- 
+Vivado xsim command to compile aes:
 xsc usr/caliptra-rtl/src/integration/test_suites/libs/aes/aes.c --gcc_compile_options "-Iusr/caliptra-rtl/src/integration/test_suites/includes/" --gcc_compile_options "-Iusr/caliptra-rtl/src/integration/rtl" --gcc_compile_options "-Iusr/caliptra-rtl/src/integration/test_suites/libs/printf/" --gcc_compile_options "-Iusr/caliptra-rtl/src/integration/test_suites/libs/riscv_hw_if/"
 ```
+ -->
