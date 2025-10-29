@@ -9,8 +9,7 @@ This repository provides a Docker-based environment for running Caliptra RTL sim
 - Pre-built RISC-V toolchain (cross compiler, multilib, zicsr/zifencei extensions)
 
 ## Pre-requisites
-- Set the correct path to VCS in `docker-compose.yml`
-- Set the correct path to VCS and Synopsys licensing server in Dockerfile (`VCS_HOME` and `NPSLMD_LICENSE_FILE`).
+- Set the variables: `SYNOPSYS_ROOT`, `VCS_HOME` and `SNPSLMD_LIC` in `Makefile`.
 - Pull all submodules correctly:
 ```sh
 git submodule update --init --recursive

@@ -41,9 +41,7 @@ RUN yum -y install devtoolset-9 && \
 ENV PATH=/opt/rh/devtoolset-9/root/usr/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/rh/devtoolset-9/root/usr/lib64:$LD_LIBRARY_PATH
 
-ENV VCS_ARCH_OVERRIDE="linux"   \
-    VCS_HOME="/tools/Synopsys/vcs/T-2022.06-SP2-10" \
-    SNPSLMD_LICENSE_FILE="1705@its-flexlm-lnx4.ucsd.edu" 
+ENV VCS_ARCH_OVERRIDE="linux"
 ENV PATH=$VCS_HOME/bin:$PATH 
 
 RUN yum install -y \

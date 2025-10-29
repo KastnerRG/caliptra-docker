@@ -8,6 +8,10 @@ HOSTNAME_VAR := $(shell bash -lc 'echo $${USER:2:3}')
 IMAGE        := $(USR)/vcs-caliptra-centos:dev
 CONTAINER    := caliptra-$(USR)
 
+SYNOPSYS_ROOT:= /tools/Syncopsys
+VCS_HOME     :="/tools/Synopsys/vcs/T-2022.06-SP2-10"
+SNPSLMD_LIC  :="1705@its-flexlm-lnx4.ucsd.edu" 
+
 build:
 	- xhost +Local:docker
 	docker build \
@@ -22,10 +26,12 @@ start:
 	docker run -d --name $(CONTAINER) \
 		-h $(HOSTNAME_VAR) \
 		-e DISPLAY=$$DISPLAY \
+		-e VCS_HOME=$(VCS_HOME) \
+		-e SNPSLMD_LICENSE_FILE=$(SNPSLMD_LIC) \
 		--tty --interactive \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
 		-v ./ws:/home/usr/ws \
-		-v /tools/Syncopsys:/tools/Synopsys:ro \
+		-v $(SYNOPSYS_ROOT):/tools/Synopsys:ro \
 		-w /home/usr/ws \
 		$(IMAGE) tail -f /dev/null
 
