@@ -26,15 +26,16 @@ make kill
 ```
 
 ## Caliptra RTL
+
 Caliptra workspace should look like this:
 ```plaintext
 ws/
+├── Makefile
 ├── usr/
 │   └── caliptra-rtl # Repo listed below (fork of caliptra-rtl)
-├── work-vcs/
-│   └── ...
-├── work-verilator/
-    └── ...
+├── work/
+    └── $(test)_$(sim)/
+        └── ...
 ```
 [Caliptra RTL dev repo](https://github.com/zhenghuama/caliptra-rtl/tree/dev-v2.0) on branch dev-v2.0 (forked from Caliptra v2.0 stable release).
 
@@ -43,7 +44,7 @@ ws/
 Inside the docker container (in `ws` folder)
 
 ```sh
-make test= sim=
+make test=
 ```
 
 test:
@@ -53,9 +54,8 @@ test:
 * smoke_test_veer
 * smoke_test_aes_gcm
 
-sim:
-* vcs
-* verilator
+Tests: [ws/usr/caliptra-rtl/src/integration/test_suites](https://github.com/zhenghuama/caliptra-rtl/tree/main/src/integration/test_suites)
+UVM tests: [ws/usr/caliptra-rtl/src/integration/uvmf_caliptra_top/uvmf_template_output/project_benches/caliptra_top/tb/tests/src](https://github.com/zhenghuama/caliptra-rtl/tree/main/src/integration/uvmf_caliptra_top/uvmf_template_output/project_benches/caliptra_top/tb/tests/src)
 
 ## Xsim AES
 

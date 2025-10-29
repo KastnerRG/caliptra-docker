@@ -1,11 +1,11 @@
 test ?= hello_world_iccm
 sim ?= vcs
-TESTDIR := $(CALIPTRA_WORKSPACE)/work-$(sim)/usr/$(test)
+TESTDIR := $(CALIPTRA_WORKSPACE)/work/$(test)_$(sim)
 
 run:
-	@mkdir -p '$(TESTDIR)'
-	@rm -rf '$(TESTDIR)'/*
-	@$(MAKE) -C '$(TESTDIR)' -f '$(CALIPTRA_ROOT)/tools/scripts/Makefile' test='$(test)' debug=1 $(sim) | tee './$(test)_$(sim).log'
+	rm -rf $(TESTDIR)
+	mkdir -p '$(TESTDIR)'
+	$(MAKE) -C '$(TESTDIR)' -f '$(CALIPTRA_ROOT)/tools/scripts/Makefile' test='$(test)' debug=1 $(sim) | tee 'work/$(test)_$(sim).log'
 
-help:
-	@printf "Usage: make [test=hello_world_iccm|smoke_test_sha256|smoke_test_veer] [sim=vcs|verilator]\n"
+clean:
+	rm -rf ./work
