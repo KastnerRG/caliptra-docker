@@ -22,6 +22,7 @@ RUN yum -y groupinstall "Development Tools" && \
 
 # Optional: Install GCC 9.2 and binutils 2.33.1
 RUN yum -y install centos-release-scl 
+# Placeholder
 
 RUN ls -l /etc/yum.repos.d
 

@@ -1,4 +1,4 @@
-[submodule "ws/usr/caliptra-rtl"]
-	path = ws/usr/caliptra-rtl
-	url = https://github.com/zhenghuama/caliptra-rtl.git
-	branch = dev-v2.0
+[submodule "ws/usr/dejavuzz"]
+	path = ws/usr/dejavuzz
+	url = https://github.com/sycuricon/DejaVuzz.git
+	branch = master
