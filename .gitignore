@@ -1,3 +1,4 @@
 ws/*.log
 ws/work*
 ws/scripts/*.log
+dep.zip

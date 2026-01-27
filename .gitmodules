@@ -1,4 +1,4 @@
-[submodule "ws/usr/dejavuzz"]
-	path = ws/usr/dejavuzz
+[submodule "ws/usr/DejaVuzz"]
+	path = ws/usr/DejaVuzz
 	url = https://github.com/sycuricon/DejaVuzz.git
 	branch = master
