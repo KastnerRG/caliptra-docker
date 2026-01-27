@@ -5,8 +5,8 @@ USR          := $(shell id -un)
 UID          := $(shell id -u)
 GID          := $(shell id -g)
 HOSTNAME_VAR := $(shell bash -lc 'echo $${USER:2:3}')
-IMAGE        := $(USR)/vcs-caliptra-centos:dev
-CONTAINER    := caliptra-$(USR)
+IMAGE        := $(USR)/vcs-dejavuzz-rocky:dev
+CONTAINER    := dejavuzz-$(USR)
 
 SYNOPSYS_ROOT:= /tools/Syncopsys
 VCS_HOME     :="/tools/Synopsys/vcs/T-2022.06-SP2-10"
@@ -19,6 +19,7 @@ build:
 		--build-arg UID=$(UID) \
 		--build-arg GID=$(GID) \
 		--build-arg USERNAME=$(USR) \
+		--build-arg VCS_HOME=$(VCS_HOME) \
 		-t $(IMAGE) .
 
 start:
