@@ -4,9 +4,11 @@ This repository provides a Docker-based environment for running Caliptra RTL sim
 
 ## Features
 
-- CentOS 7.3-based, adding mirrors to avoid yum issues caused by EOL.
+- Ubuntu-based image for running the VCS/Verilator simulation environment.
 - Pre-requisites for VCS
 - Pre-built RISC-V toolchain (cross compiler, multilib, zicsr/zifencei extensions)
+- Source-built Verilator, configurable via `VERILATOR_VERSION` and defaulting to v5.044.
+- Caliptra RTL submodule pinned to upstream stable tag v2.1.2.
 
 ## Pre-requisites
 - Set the variables: `SYNOPSYS_ROOT`, `VCS_HOME` and `SNPSLMD_LIC` in `Makefile`.
@@ -19,10 +21,10 @@ git submodule update --recursive
 ## Working with Docker
 
 ```sh
-make build
-make start
+make fresh
 make enter
-make kill
+
+make restart
 ```
 
 ## Caliptra RTL
@@ -37,7 +39,7 @@ ws/
     └── $(test)_$(sim)/
         └── ...
 ```
-[Caliptra RTL dev repo](https://github.com/zhenghuama/caliptra-rtl/tree/dev-v2.0) on branch dev-v2.0 (forked from Caliptra v2.0 stable release).
+[Caliptra RTL upstream](https://github.com/chipsalliance/caliptra-rtl/tree/v2.1.2) pinned to stable tag v2.1.2.
 
 ## Run Simulation
 
@@ -45,7 +47,8 @@ Inside the docker container (in `ws` folder)
 
 ```sh
 make list # Print a list of tests
-make test=<test>
+make test=<test> sim=vcs
+make test=<test> sim=verilator
 ```
 
 eg. tests:
