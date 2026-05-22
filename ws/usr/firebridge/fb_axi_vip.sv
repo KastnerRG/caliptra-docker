@@ -1,5 +1,19 @@
 `timescale 1ns/1ps
 
+/*
+TODO:
+* I dont want fifo specific ports, address and decoding.
+* Change S_AXI_BASE_ADDR to AXI_BASE_ADDR, maybe add AXI_REGION_BYTES
+* Consider there is only one address map: all slaves and masters
+* If you get a req through the M port, you have to route it to the S port based on the address map.
+* If its in the DDR region, then we use the fb_c_functions
+* Outside this module, connect the fifo to an m port, such that traffic to the fifo's region gets routed to the FIFO, without treating fifo as a special case. I want to solve the general case.
+* AXI out of order transaction is a problem.
+  - if we get a req in the s port, put the {id, m_idx} in a queue (SV data structure)., and route the req. pop it when the response comes back.
+  - if we get another req with same id, but different m_idx, we have to stall accepting requests until that {id, m_idx} leaves the queue.
+* If you think there is a non trivial problem with this, stop and tell me asap.
+*/
+
 module fb_axi_vip #(
   parameter
   S_COUNT          = 1,
@@ -16,13 +30,15 @@ module fb_axi_vip #(
   S_AXI_USER_VALUE  = 32'h0,
   S_AXI_STRB_WIDTH  = (S_AXI_DATA_WIDTH/8),
   S_AXI_BASE_ADDR   = {32'hA0000000},
+  M_AXI_FIFO_BASE_ADDR = 32'hFA570000,
+  M_AXI_FIFO_ADDR_WIDTH = 18,
 
-  VALID_PROB        = 1000,
-  READY_PROB        = 1000
+	  VALID_PROB        = 1000,
+	  READY_PROB        = 1000
 )(
-  input  bit clk,
-  input  bit rstn,
-  output bit firebridge_done,
+	  input  bit clk,
+	  input  bit rstn,
+	  output bit firebridge_done,
 
   // AXI Slave
   output bit [S_COUNT-1:0][S_AXI_ID_WIDTH -1:0]   s_axi_awid   ,
@@ -94,30 +110,74 @@ module fb_axi_vip #(
   output bit [M_COUNT-1:0]                        m_axi_arready,
   output bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0]    m_axi_rid    ,
   output bit [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]  m_axi_rdata  ,
-  output bit [M_COUNT-1:0][1:0]                   m_axi_rresp  ,
-  output bit [M_COUNT-1:0]                        m_axi_rlast  ,
-  output bit [M_COUNT-1:0]                        m_axi_rvalid ,
-  input  bit [M_COUNT-1:0]                        m_axi_rready  
-);
+	  output bit [M_COUNT-1:0][1:0]                   m_axi_rresp  ,
+	  output bit [M_COUNT-1:0]                        m_axi_rlast  ,
+	  output bit [M_COUNT-1:0]                        m_axi_rvalid ,
+	  input  bit [M_COUNT-1:0]                        m_axi_rready ,
+
+	  // Optional decoded FIFO AXI slave target for DMA-side traffic.
+	  output bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0]    f_axi_awid   ,
+	  output bit [M_COUNT-1:0][M_AXI_ADDR_WIDTH-1:0]  f_axi_awaddr ,
+	  output bit [M_COUNT-1:0][7:0]                   f_axi_awlen  ,
+	  output bit [M_COUNT-1:0][2:0]                   f_axi_awsize ,
+	  output bit [M_COUNT-1:0][1:0]                   f_axi_awburst,
+	  output bit [M_COUNT-1:0]                        f_axi_awlock ,
+	  output bit [M_COUNT-1:0][3:0]                   f_axi_awcache,
+	  output bit [M_COUNT-1:0][2:0]                   f_axi_awprot ,
+	  output bit [M_COUNT-1:0]                        f_axi_awvalid,
+	  input  bit [M_COUNT-1:0]                        f_axi_awready,
+	  output bit [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]  f_axi_wdata  ,
+	  output bit [M_COUNT-1:0][M_AXI_STRB_WIDTH-1:0]  f_axi_wstrb  ,
+	  output bit [M_COUNT-1:0]                        f_axi_wlast  ,
+	  output bit [M_COUNT-1:0]                        f_axi_wvalid ,
+	  input  bit [M_COUNT-1:0]                        f_axi_wready ,
+	  input  bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0]    f_axi_bid    ,
+	  input  bit [M_COUNT-1:0][1:0]                   f_axi_bresp  ,
+	  input  bit [M_COUNT-1:0]                        f_axi_bvalid ,
+	  output bit [M_COUNT-1:0]                        f_axi_bready ,
+	  output bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0]    f_axi_arid   ,
+	  output bit [M_COUNT-1:0][M_AXI_ADDR_WIDTH-1:0]  f_axi_araddr ,
+	  output bit [M_COUNT-1:0][7:0]                   f_axi_arlen  ,
+	  output bit [M_COUNT-1:0][2:0]                   f_axi_arsize ,
+	  output bit [M_COUNT-1:0][1:0]                   f_axi_arburst,
+	  output bit [M_COUNT-1:0]                        f_axi_arlock ,
+	  output bit [M_COUNT-1:0][3:0]                   f_axi_arcache,
+	  output bit [M_COUNT-1:0][2:0]                   f_axi_arprot ,
+	  output bit [M_COUNT-1:0]                        f_axi_arvalid,
+	  input  bit [M_COUNT-1:0]                        f_axi_arready,
+	  input  bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0]    f_axi_rid    ,
+	  input  bit [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]  f_axi_rdata  ,
+	  input  bit [M_COUNT-1:0][1:0]                   f_axi_rresp  ,
+	  input  bit [M_COUNT-1:0]                        f_axi_rlast  ,
+	  input  bit [M_COUNT-1:0]                        f_axi_rvalid ,
+	  output bit [M_COUNT-1:0]                        f_axi_rready
+	);
   chandle p_mem;
   genvar m;
   localparam  
-    LSB = $clog2(M_AXI_DATA_WIDTH)-3,
-	    OPT_LOCK          = 1'b0,
-	    OPT_LOCKID        = 1'b1,
-	    OPT_LOWPOWER      = 1'b0,
-	    FB_AXI_TIMEOUT    = 100000,
-	    FB_AXI_RESP_TIMEOUT = 10000000,
-	    S_BYTES           = (S_AXI_DATA_WIDTH/8),
-	    S_SIZE            = $clog2(S_BYTES);
+	    LSB = $clog2(M_AXI_DATA_WIDTH)-3,
+		    OPT_LOCK          = 1'b0,
+		    OPT_LOCKID        = 1'b1,
+		    OPT_LOWPOWER      = 1'b0,
+		    FB_AXI_TIMEOUT    = 100000,
+		    FB_AXI_RESP_TIMEOUT = 10000000,
+		    S_BYTES           = (S_AXI_DATA_WIDTH/8),
+		    S_SIZE            = $clog2(S_BYTES),
+		    M_AXI_ID_COUNT    = (1 << M_AXI_ID_WIDTH);
 
   bit  [M_COUNT-1:0]                            ren;
   bit  [M_COUNT-1:0][M_AXI_ADDR_WIDTH-LSB-1:0]  raddr;
   bit  [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]      rdata;
-  bit  [M_COUNT-1:0]                            wen;
-  bit  [M_COUNT-1:0][M_AXI_ADDR_WIDTH-LSB-1:0]  waddr;
-  bit  [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]      wdata;
-  bit  [M_COUNT-1:0][M_AXI_DATA_WIDTH/8-1:0]    wstrb;
+	  bit  [M_COUNT-1:0]                            wen;
+	  bit  [M_COUNT-1:0][M_AXI_ADDR_WIDTH-LSB-1:0]  waddr;
+	  bit  [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0]      wdata;
+	  bit  [M_COUNT-1:0][M_AXI_DATA_WIDTH/8-1:0]    wstrb;
+
+	  function automatic bit is_m_fifo_addr(input bit [M_AXI_ADDR_WIDTH-1:0] addr);
+	    bit [M_AXI_ADDR_WIDTH-1:0] fifo_mask;
+	    fifo_mask = {M_AXI_ADDR_WIDTH{1'b1}} << M_AXI_FIFO_ADDR_WIDTH;
+	    return (addr & fifo_mask) == (M_AXI_ADDR_WIDTH'(M_AXI_FIFO_BASE_ADDR) & fifo_mask);
+	  endfunction
 
   function automatic int get_s_index(int addr);
     int index = -1;
@@ -286,51 +346,150 @@ module fb_axi_vip #(
   bit [M_COUNT-1:0] m_axi_rready_zipcpu;
   bit [M_COUNT-1:0] m_axi_awvalid_zipcpu;
   bit [M_COUNT-1:0] m_axi_awready_zipcpu;
-  bit [M_COUNT-1:0] m_axi_wvalid_zipcpu;
-  bit [M_COUNT-1:0] m_axi_wready_zipcpu;
-  bit [M_COUNT-1:0] m_axi_bvalid_zipcpu;
-  bit [M_COUNT-1:0] m_axi_bready_zipcpu;
-  bit [M_COUNT-1:0] rand_ar;
-  bit [M_COUNT-1:0] rand_r;
-  bit [M_COUNT-1:0] rand_aw;
-  bit [M_COUNT-1:0] rand_w;
-  bit [M_COUNT-1:0] rand_b;
+	  bit [M_COUNT-1:0] m_axi_wvalid_zipcpu;
+	  bit [M_COUNT-1:0] m_axi_wready_zipcpu;
+	  bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0] m_axi_bid_zipcpu;
+	  bit [M_COUNT-1:0][1:0] m_axi_bresp_zipcpu;
+	  bit [M_COUNT-1:0] m_axi_bvalid_zipcpu;
+	  bit [M_COUNT-1:0] m_axi_bready_zipcpu;
+	  bit [M_COUNT-1:0][M_AXI_ID_WIDTH-1:0] m_axi_rid_zipcpu;
+	  bit [M_COUNT-1:0][M_AXI_DATA_WIDTH-1:0] m_axi_rdata_zipcpu;
+	  bit [M_COUNT-1:0][1:0] m_axi_rresp_zipcpu;
+	  bit [M_COUNT-1:0] m_axi_rlast_zipcpu;
+	  bit [M_COUNT-1:0] wr_route_valid;
+	  bit [M_COUNT-1:0] wr_route_fifo;
+	  bit [M_COUNT-1:0] rd_route_valid;
+	  bit [M_COUNT-1:0] rd_route_fifo;
+	  bit [M_AXI_ID_COUNT-1:0] wr_id_active [M_COUNT];
+	  bit [M_AXI_ID_COUNT-1:0] wr_id_target_fifo [M_COUNT];
+	  bit [M_AXI_ID_COUNT-1:0] rd_id_active [M_COUNT];
+	  bit [M_AXI_ID_COUNT-1:0] rd_id_target_fifo [M_COUNT];
+	  bit [M_COUNT-1:0] rand_ar;
+	  bit [M_COUNT-1:0] rand_r;
+	  bit [M_COUNT-1:0] rand_aw;
+	  bit [M_COUNT-1:0] rand_w;
+	  bit [M_COUNT-1:0] rand_b;
+	  
 
-  assign m_axi_arvalid_zipcpu = rand_ar & m_axi_arvalid       ;
-  assign m_axi_arready        = rand_ar & m_axi_arready_zipcpu;
-  assign m_axi_rvalid         = rand_r  & m_axi_rvalid_zipcpu ;
-  assign m_axi_rready_zipcpu  = rand_r  & m_axi_rready        ;
-  assign m_axi_awvalid_zipcpu = rand_aw & m_axi_awvalid       ;
-  assign m_axi_awready        = rand_aw & m_axi_awready_zipcpu;
-  assign m_axi_wvalid_zipcpu  = rand_w  & m_axi_wvalid        ;
-  assign m_axi_wready         = rand_w  & m_axi_wready_zipcpu ;
-  assign m_axi_bvalid         = rand_b  & m_axi_bvalid_zipcpu ;
-  assign m_axi_bready_zipcpu  = rand_b  & m_axi_bready        ;
-  
-
-  // Handle M Masters
+	  // Handle M Masters
   import "DPI-C" context function byte fb_c_read_ddr8_addr32  (input int unsigned addr, chandle p_mem);
   import "DPI-C" context function void fb_c_write_ddr8_addr32 (input int unsigned addr, input byte data, chandle p_mem);
 
   for (m=0; m< M_COUNT; m++) begin
 
-    always_ff @(posedge clk or negedge rstn) begin
-      if (!rstn) begin
-        rand_r [m]  <= 1;
-        rand_ar[m]  <= 1;
-        rand_aw[m]  <= 1;
-        rand_w [m]  <= 1;
-        rand_b [m]  <= 1;
-      end else begin
-        rand_r  [m]  <= $urandom_range(0, 1000) < VALID_PROB;
-        rand_ar [m]  <= $urandom_range(0, 1000) < VALID_PROB;
-        rand_aw [m]  <= $urandom_range(0, 1000) < READY_PROB;
-        rand_w  [m]  <= $urandom_range(0, 1000) < READY_PROB;
-        rand_b  [m]  <= $urandom_range(0, 1000) < READY_PROB;
-      end
-    end
+	    always_ff @(posedge clk or negedge rstn) begin
+	      if (!rstn) begin
+	        rand_r [m]  <= 1;
+	        rand_ar[m]  <= 1;
+          rand_aw[m]  <= 1;
+          rand_w [m]  <= 1;
+          rand_b [m]  <= 1;
+        end else begin
+          rand_r  [m]  <= $urandom_range(0, 1000) < VALID_PROB;
+          rand_ar [m]  <= $urandom_range(0, 1000) < VALID_PROB;
+          rand_aw [m]  <= $urandom_range(0, 1000) < READY_PROB;
+          rand_w  [m]  <= $urandom_range(0, 1000) < READY_PROB;
+          rand_b  [m]  <= $urandom_range(0, 1000) < READY_PROB;
+	      end
+	    end
 
-    zipcpu_axi2ram #(
+	    wire aw_sel_fifo    = is_m_fifo_addr(m_axi_awaddr[m]);
+	    wire ar_sel_fifo    = is_m_fifo_addr(m_axi_araddr[m]);
+	    wire aw_id_conflict = wr_id_active[m][m_axi_awid[m]] && (wr_id_target_fifo[m][m_axi_awid[m]] != aw_sel_fifo);
+	    wire ar_id_conflict = rd_id_active[m][m_axi_arid[m]] && (rd_id_target_fifo[m][m_axi_arid[m]] != ar_sel_fifo);
+	    wire aw_accept      = m_axi_awvalid[m] && m_axi_awready[m];
+	    wire w_accept_last  = m_axi_wvalid[m] && m_axi_wready[m] && m_axi_wlast[m];
+	    wire b_accept       = m_axi_bvalid[m] && m_axi_bready[m];
+	    wire ar_accept      = m_axi_arvalid[m] && m_axi_arready[m];
+	    wire r_accept_last  = m_axi_rvalid[m] && m_axi_rready[m] && m_axi_rlast[m];
+
+	    always_ff @(posedge clk or negedge rstn) begin
+	      if (!rstn) begin
+	        wr_route_valid[m] <= 1'b0;
+	        wr_route_fifo[m]  <= 1'b0;
+	        rd_route_valid[m] <= 1'b0;
+	        rd_route_fifo[m]  <= 1'b0;
+	        wr_id_active[m] <= '0;
+	        wr_id_target_fifo[m] <= '0;
+	        rd_id_active[m] <= '0;
+	        rd_id_target_fifo[m] <= '0;
+	      end else begin
+	        if (aw_accept) begin
+	          wr_route_valid[m] <= 1'b1;
+	          wr_route_fifo[m]  <= aw_sel_fifo;
+	          wr_id_active[m][m_axi_awid[m]] <= 1'b1;
+	          wr_id_target_fifo[m][m_axi_awid[m]] <= aw_sel_fifo;
+	        end
+	        if (w_accept_last) begin
+	          wr_route_valid[m] <= 1'b0;
+	        end
+	        if (b_accept) begin
+	          wr_id_active[m][m_axi_bid[m]] <= 1'b0;
+	        end
+	        if (ar_accept) begin
+	          rd_route_valid[m] <= 1'b1;
+	          rd_route_fifo[m]  <= ar_sel_fifo;
+	          rd_id_active[m][m_axi_arid[m]] <= 1'b1;
+	          rd_id_target_fifo[m][m_axi_arid[m]] <= ar_sel_fifo;
+	        end
+	        if (r_accept_last) begin
+	          rd_route_valid[m] <= 1'b0;
+	          rd_id_active[m][m_axi_rid[m]] <= 1'b0;
+	        end
+	      end
+	    end
+
+	    assign m_axi_awvalid_zipcpu[m] = rand_aw[m] && m_axi_awvalid[m] && !aw_sel_fifo && !aw_id_conflict && !wr_route_valid[m];
+	    assign f_axi_awvalid[m]        = rand_aw[m] && m_axi_awvalid[m] &&  aw_sel_fifo && !aw_id_conflict && !wr_route_valid[m];
+	    assign m_axi_awready[m]        = rand_aw[m] && !aw_id_conflict && !wr_route_valid[m] &&
+	                                     (aw_sel_fifo ? f_axi_awready[m] : m_axi_awready_zipcpu[m]);
+
+	    assign m_axi_wvalid_zipcpu[m] = rand_w[m] && m_axi_wvalid[m] && wr_route_valid[m] && !wr_route_fifo[m];
+	    assign f_axi_wvalid[m]        = rand_w[m] && m_axi_wvalid[m] && wr_route_valid[m] &&  wr_route_fifo[m];
+	    assign m_axi_wready[m]        = rand_w[m] && wr_route_valid[m] &&
+	                                    (wr_route_fifo[m] ? f_axi_wready[m] : m_axi_wready_zipcpu[m]);
+
+	    assign m_axi_bvalid[m]        = rand_b[m] && (m_axi_bvalid_zipcpu[m] || f_axi_bvalid[m]);
+	    assign m_axi_bid[m]           = f_axi_bvalid[m] ? f_axi_bid[m] : m_axi_bid_zipcpu[m];
+	    assign m_axi_bresp[m]         = f_axi_bvalid[m] ? f_axi_bresp[m] : m_axi_bresp_zipcpu[m];
+	    assign m_axi_bready_zipcpu[m] = rand_b[m] && m_axi_bready[m] && m_axi_bvalid_zipcpu[m] && !f_axi_bvalid[m];
+	    assign f_axi_bready[m]        = rand_b[m] && m_axi_bready[m] && f_axi_bvalid[m];
+
+	    assign m_axi_arvalid_zipcpu[m] = rand_ar[m] && m_axi_arvalid[m] && !ar_sel_fifo && !ar_id_conflict && !rd_route_valid[m];
+	    assign f_axi_arvalid[m]        = rand_ar[m] && m_axi_arvalid[m] &&  ar_sel_fifo && !ar_id_conflict && !rd_route_valid[m];
+	    assign m_axi_arready[m]        = rand_ar[m] && !ar_id_conflict && !rd_route_valid[m] &&
+	                                     (ar_sel_fifo ? f_axi_arready[m] : m_axi_arready_zipcpu[m]);
+
+	    assign m_axi_rvalid[m]        = rand_r[m] && rd_route_valid[m] &&
+	                                    (rd_route_fifo[m] ? f_axi_rvalid[m] : m_axi_rvalid_zipcpu[m]);
+	    assign m_axi_rid[m]           = rd_route_fifo[m] ? f_axi_rid[m] : m_axi_rid_zipcpu[m];
+	    assign m_axi_rdata[m]         = rd_route_fifo[m] ? f_axi_rdata[m] : m_axi_rdata_zipcpu[m];
+	    assign m_axi_rresp[m]         = rd_route_fifo[m] ? f_axi_rresp[m] : m_axi_rresp_zipcpu[m];
+	    assign m_axi_rlast[m]         = rd_route_fifo[m] ? f_axi_rlast[m] : m_axi_rlast_zipcpu[m];
+	    assign m_axi_rready_zipcpu[m] = rand_r[m] && m_axi_rready[m] && rd_route_valid[m] && !rd_route_fifo[m];
+	    assign f_axi_rready[m]        = rand_r[m] && m_axi_rready[m] && rd_route_valid[m] &&  rd_route_fifo[m];
+
+	    assign f_axi_awid[m]    = m_axi_awid[m];
+	    assign f_axi_awaddr[m]  = m_axi_awaddr[m];
+	    assign f_axi_awlen[m]   = m_axi_awlen[m];
+	    assign f_axi_awsize[m]  = m_axi_awsize[m];
+	    assign f_axi_awburst[m] = m_axi_awburst[m];
+	    assign f_axi_awlock[m]  = m_axi_awlock[m];
+	    assign f_axi_awcache[m] = m_axi_awcache[m];
+	    assign f_axi_awprot[m]  = m_axi_awprot[m];
+	    assign f_axi_wdata[m]   = m_axi_wdata[m];
+	    assign f_axi_wstrb[m]   = m_axi_wstrb[m];
+	    assign f_axi_wlast[m]   = m_axi_wlast[m];
+	    assign f_axi_arid[m]    = m_axi_arid[m];
+	    assign f_axi_araddr[m]  = m_axi_araddr[m];
+	    assign f_axi_arlen[m]   = m_axi_arlen[m];
+	    assign f_axi_arsize[m]  = m_axi_arsize[m];
+	    assign f_axi_arburst[m] = m_axi_arburst[m];
+	    assign f_axi_arlock[m]  = m_axi_arlock[m];
+	    assign f_axi_arcache[m] = m_axi_arcache[m];
+	    assign f_axi_arprot[m]  = m_axi_arprot[m];
+
+	    zipcpu_axi2ram #(
       .C_S_AXI_ID_WIDTH   (M_AXI_ID_WIDTH  ),
       .C_S_AXI_DATA_WIDTH (M_AXI_DATA_WIDTH),
       .C_S_AXI_ADDR_WIDTH (M_AXI_ADDR_WIDTH),
@@ -366,8 +525,8 @@ module fb_axi_vip #(
       .S_AXI_WLAST  (m_axi_wlast          [m]),
       .S_AXI_WVALID (m_axi_wvalid_zipcpu  [m]),
       .S_AXI_WREADY (m_axi_wready_zipcpu  [m]),
-      .S_AXI_BID    (m_axi_bid            [m]),
-      .S_AXI_BRESP  (m_axi_bresp          [m]),
+      .S_AXI_BID    (m_axi_bid_zipcpu     [m]),
+      .S_AXI_BRESP  (m_axi_bresp_zipcpu   [m]),
       .S_AXI_BVALID (m_axi_bvalid_zipcpu  [m]),
       .S_AXI_BREADY (m_axi_bready_zipcpu  [m]),
       .S_AXI_ARID   (m_axi_arid           [m]),
@@ -381,10 +540,10 @@ module fb_axi_vip #(
       .S_AXI_ARQOS(),
       .S_AXI_ARVALID(m_axi_arvalid_zipcpu [m]),
       .S_AXI_ARREADY(m_axi_arready_zipcpu [m]),
-      .S_AXI_RID    (m_axi_rid            [m]),
-      .S_AXI_RDATA  (m_axi_rdata          [m]),
-      .S_AXI_RRESP  (m_axi_rresp          [m]),
-      .S_AXI_RLAST  (m_axi_rlast          [m]),
+      .S_AXI_RID    (m_axi_rid_zipcpu     [m]),
+      .S_AXI_RDATA  (m_axi_rdata_zipcpu   [m]),
+      .S_AXI_RRESP  (m_axi_rresp_zipcpu   [m]),
+      .S_AXI_RLAST  (m_axi_rlast_zipcpu   [m]),
       .S_AXI_RVALID (m_axi_rvalid_zipcpu  [m]),
       .S_AXI_RREADY (m_axi_rready_zipcpu  [m])
     );

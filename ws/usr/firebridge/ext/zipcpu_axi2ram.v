@@ -320,7 +320,7 @@ module zipcpu_axi2ram #(
 		// }}}
 	) awbuf(
 		// {{{
-		.i_clk(S_AXI_ACLK), .i_reset(!S_AXI_ARESETN),
+		.i_clk(S_AXI_ACLK), .i_reset(S_AXI_ARESETN),
 		.i_valid(S_AXI_AWVALID), .o_ready(S_AXI_AWREADY),
 			.i_data({ S_AXI_AWADDR, S_AXI_AWBURST, S_AXI_AWSIZE,
 				S_AXI_AWLOCK, S_AXI_AWLEN, S_AXI_AWID }),
@@ -685,7 +685,7 @@ module zipcpu_axi2ram #(
 		// }}}
 	) rskid (
 		// {{{
-		.i_clk(S_AXI_ACLK), .i_reset(!S_AXI_ARESETN),
+		.i_clk(S_AXI_ACLK), .i_reset(S_AXI_ARESETN),
 		.i_valid(rskd_valid), .o_ready(rskd_ready),
 		.i_data({ rskd_id, rskd_lock, rskd_last, i_rdata }),
 		.o_valid(S_AXI_RVALID), .i_ready(S_AXI_RREADY),
