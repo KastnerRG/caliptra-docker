@@ -24,6 +24,18 @@ extern "C" void fb_c_write_ddr8_addr32(u32 addr_32, u8 data, void *p_mem) {
   *reinterpret_cast<u8 *>(static_cast<uintptr_t>(addr)) = data;
 }
 
+extern "C" u32 fb_c_read_ddr32_addr32(u32 addr_32, void *p_mem) {
+  const u64 addr = fb_widen_ptr(addr_32, p_mem);
+  return *reinterpret_cast<u32 *>(static_cast<uintptr_t>(addr));
+}
+
+extern "C" void fb_c_write_ddr32_addr32(u32 addr_32, u32 data, u8 strb, void *p_mem) {
+  u8 *ptr = reinterpret_cast<u8 *>(static_cast<uintptr_t>(fb_widen_ptr(addr_32, p_mem)));
+  if (strb == 0xF) { *reinterpret_cast<u32 *>(ptr) = data; return; }
+  for (int i = 0; i < 4; i++)
+    if ((strb >> i) & 1) ptr[i] = static_cast<u8>(data >> (i * 8));
+}
+
 namespace {
 
 constexpr std::uint32_t kUdsSeed[16] = {

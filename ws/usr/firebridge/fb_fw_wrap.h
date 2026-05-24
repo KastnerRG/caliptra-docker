@@ -107,8 +107,10 @@ static inline u64 fb_widen_ptr(u32 addr, void* p_mem){
 }
 
 #ifdef FB_FW_WRAP_EXTERNAL_DPI
-extern EXT_C u8 fb_c_read_ddr8_addr32 (u32 addr_32, void* p_mem);
-extern EXT_C void fb_c_write_ddr8_addr32 (u32 addr_32, u8 data, void* p_mem);
+extern EXT_C u8   fb_c_read_ddr8_addr32   (u32 addr_32, void* p_mem);
+extern EXT_C void fb_c_write_ddr8_addr32  (u32 addr_32, u8  data, void* p_mem);
+extern EXT_C u32  fb_c_read_ddr32_addr32  (u32 addr_32, void* p_mem);
+extern EXT_C void fb_c_write_ddr32_addr32 (u32 addr_32, u32 data, u8 strb, void* p_mem);
 #else
 extern EXT_C u8 fb_c_read_ddr8_addr32 (u32 addr_32, void* p_mem){
   u64 addr = fb_widen_ptr(addr_32, p_mem);
@@ -119,6 +121,18 @@ extern EXT_C u8 fb_c_read_ddr8_addr32 (u32 addr_32, void* p_mem){
 extern EXT_C void fb_c_write_ddr8_addr32 (u32 addr_32, u8 data, void* p_mem){
   u64 addr = fb_widen_ptr(addr_32, p_mem);
   *(u8*restrict)(uintptr_t)addr = data;
+}
+
+extern EXT_C u32 fb_c_read_ddr32_addr32 (u32 addr_32, void* p_mem){
+  u64 addr = fb_widen_ptr(addr_32, p_mem);
+  return *(u32*restrict)(uintptr_t)addr;
+}
+
+extern EXT_C void fb_c_write_ddr32_addr32 (u32 addr_32, u32 data, u8 strb, void* p_mem){
+  u8*restrict ptr = (u8*restrict)(uintptr_t)fb_widen_ptr(addr_32, p_mem);
+  if (strb == 0xF) { *(u32*restrict)ptr = data; return; }
+  for (int i = 0; i < 4; i++)
+    if ((strb >> i) & 1) ptr[i] = (u8)(data >> (i*8));
 }
 #endif
 
