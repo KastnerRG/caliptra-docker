@@ -2,3 +2,5 @@ ws/*.log
 ws/work*
 ws/scripts/*.log
 ws/usr/experiments/runs
+
+__pycache__
