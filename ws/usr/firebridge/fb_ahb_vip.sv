@@ -123,19 +123,99 @@ module fb_ahb_vip #(
   export "DPI-C" function fb_fn_read_reg;
   export "DPI-C" task fb_task_write_reg;
 
+  // Workaround: inline ahb_write / ahb_read here.  When these bodies live
+  // in a sub-task that has DPI imports, signal assignments between the DPI
+  // import calls are silently dropped by the tool's DPI-export codegen.
+  task automatic fb_task_write_reg(input longint addr, input longint data);
+    at_posedge_clk();
+    `TIMESTEP;
+    hsel   = 1'b1;
+    haddr  = AHB_ADDR_WIDTH'(addr);
+    hwrite = 1'b1;
+    hsize  = AHB_HSIZE_WORD;
+    htrans = AHB_HTRANS_NONSEQ;
+    hready = 1'b1;
+
+    at_posedge_clk();
+    `TIMESTEP;
+    haddr  = '0;
+    hwdata = fb_reg_t'(data);
+    hwrite = 1'b0;
+    htrans = AHB_HTRANS_IDLE;
+
+    wait_hreadyout("write", AHB_ADDR_WIDTH'(addr));
+
+    at_posedge_clk();
+    `TIMESTEP;
+    ahb_idle();
+  endtask
+
   task automatic fb_task_read_reg(input longint addr);
-    fb_reg_t d;
-    ahb_read(AHB_ADDR_WIDTH'(addr), d);
-    tmp_get_data = fb_reg_64_t'(d);
+    at_posedge_clk();
+    `TIMESTEP;
+    hsel   = 1'b1;
+    haddr  = AHB_ADDR_WIDTH'(addr);
+    hwrite = 1'b0;
+    hsize  = AHB_HSIZE_WORD;
+    htrans = AHB_HTRANS_NONSEQ;
+    hready = 1'b1;
+
+    at_posedge_clk();
+    `TIMESTEP;
+    haddr  = '0;
+    hwdata = '0;
+    htrans = AHB_HTRANS_IDLE;
+
+    wait_hreadyout("read", AHB_ADDR_WIDTH'(addr));
+    `TIMESTEP;
+    tmp_get_data = fb_reg_64_t'(hrdata);
+
+    at_posedge_clk();
+    `TIMESTEP;
+    ahb_idle();
   endtask
 
   function automatic fb_reg_64_t fb_fn_read_reg();
     return tmp_get_data;
   endfunction
 
-  task automatic fb_task_write_reg(input longint addr, input longint data);
-    ahb_write(AHB_ADDR_WIDTH'(addr), fb_reg_t'(data));
-  endtask
+  // Workaround for Verilator 5.044 bug: signal assignments between DPI import
+  // calls inside DPI export *tasks* are silently dropped from generated code.
+  // DPI export *functions* (no timing semantics) are generated correctly.
+  // So we expose bus-driving as functions and implement the protocol in C.
+  function automatic void fb_ahb_drive(
+      input byte unsigned hsel_v,
+      input int  unsigned haddr_v,
+      input int  unsigned hwdata_v,
+      input byte unsigned hwrite_v,
+      input byte unsigned hsize_v,
+      input byte unsigned htrans_v,
+      input byte unsigned hready_v
+  );
+    hsel   = hsel_v[0];
+    haddr  = AHB_ADDR_WIDTH'(haddr_v);
+    hwdata = AHB_DATA_WIDTH'(hwdata_v);
+    hwrite = hwrite_v[0];
+    hsize  = hsize_v[2:0];
+    htrans = htrans_v[1:0];
+    hready = hready_v[0];
+  endfunction
+  export "DPI-C" function fb_ahb_drive;
+
+  function automatic byte unsigned fb_ahb_hreadyout();
+    return {7'b0, hreadyout};
+  endfunction
+  export "DPI-C" function fb_ahb_hreadyout;
+
+  function automatic byte unsigned fb_ahb_hresp();
+    return {7'b0, hresp};
+  endfunction
+  export "DPI-C" function fb_ahb_hresp;
+
+  function automatic int unsigned fb_ahb_hrdata();
+    return hrdata;
+  endfunction
+  export "DPI-C" function fb_ahb_hrdata;
 
 `ifdef VERILATOR
   `define AUTOMATIC

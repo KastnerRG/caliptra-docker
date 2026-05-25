@@ -1,8 +1,8 @@
-#include "Vahb_selfcheck_tb.h"
+#include "Vsha256_ahb_tb.h"
 #include "verilated.h"
 
 static VerilatedContext *contextp = nullptr;
-static Vahb_selfcheck_tb *tb = nullptr;
+static Vsha256_ahb_tb *tb = nullptr;
 
 extern "C" unsigned char get_clk();
 
@@ -22,7 +22,7 @@ extern "C" void at_posedge_clk() {
 int main(int argc, char **argv) {
   contextp = new VerilatedContext;
   contextp->commandArgs(argc, argv);
-  tb = new Vahb_selfcheck_tb{contextp};
+  tb = new Vsha256_ahb_tb{contextp};
   tb->eval();
   while (!contextp->gotFinish()) {
     step_time_veri();

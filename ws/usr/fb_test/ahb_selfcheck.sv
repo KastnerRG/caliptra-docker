@@ -64,9 +64,12 @@ module ahb_wait_mem #(
   end
 endmodule
 
-module ahb_selfcheck_tb(
-  input bit clk
-);
+module ahb_selfcheck_tb;
+  // Internal clock — matches fb_top_verilator_wrap.cpp pattern where step_time_veri()
+  // only calls eval()+timeInc() without toggling a clock pin.
+  bit clk;
+  initial clk = 1'b0;
+  always #5ns clk = ~clk;
   bit rstn;
   bit firebridge_done;
   bit hsel;

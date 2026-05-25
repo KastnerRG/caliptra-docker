@@ -68,6 +68,81 @@ extern EXT_C void *fb_get_mem_p(){
   static inline void flush_cache(void *addr, uint32_t bytes) { (void)addr; (void)bytes; }
   #endif
 
+#elif defined(AHB_SIM)
+  #include <stdio.h>
+  #include <stdbool.h>
+  #include <stdlib.h>
+
+  // AHB bus is driven from C: SV exposes signal accessors as DPI export
+  // *functions* (tasks have a Verilator 5.044 codegen bug, see fb_ahb_vip.sv).
+  extern EXT_C void fb_ahb_drive(u8 hsel, u32 haddr, u32 hwdata,
+                                 u8 hwrite, u8 hsize, u8 htrans, u8 hready);
+  extern EXT_C u8   fb_ahb_hreadyout(void);
+  extern EXT_C u8   fb_ahb_hresp(void);
+  extern EXT_C u32  fb_ahb_hrdata(void);
+  extern EXT_C void at_posedge_clk(void);
+  extern EXT_C void step_time_veri(void);
+
+  #define FB_AHB_HSIZE_WORD    ((u8)2)
+  #define FB_AHB_HTRANS_IDLE   ((u8)0)
+  #define FB_AHB_HTRANS_NONSEQ ((u8)2)
+  #ifndef FB_AHB_TIMEOUT
+    #define FB_AHB_TIMEOUT 200000
+  #endif
+
+  static inline void fb_ahb_idle(void) {
+    fb_ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+  }
+
+  static inline void fb_ahb_wait_ready(const char *op, u32 addr) {
+    int i;
+    for (i = 0; i < FB_AHB_TIMEOUT; i++) {
+      if (fb_ahb_hreadyout()) break;
+      step_time_veri();
+    }
+    if (i >= FB_AHB_TIMEOUT) {
+      fprintf(stderr, "FB_AHB: timeout waiting HREADYOUT during %s addr=0x%08x\n", op, addr);
+      abort();
+    }
+    if (fb_ahb_hresp()) {
+      fprintf(stderr, "FB_AHB: HRESP error during %s addr=0x%08x\n", op, addr);
+      abort();
+    }
+  }
+
+  static inline void fb_write_reg(fb_reg_t *addr_ptr, fb_reg_t data) {
+    u32 addr = (u32)(uintptr_t)addr_ptr;
+    // Address phase
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_drive(1, addr, 0, 1, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
+    // Data phase
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_drive(0, 0, (u32)data, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+    fb_ahb_wait_ready("write", addr);
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_idle();
+  }
+
+  static inline fb_reg_t fb_read_reg(fb_reg_t *addr_ptr) {
+    u32 addr = (u32)(uintptr_t)addr_ptr;
+    // Address phase
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_drive(1, addr, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
+    // Data phase
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+    fb_ahb_wait_ready("read", addr);
+    step_time_veri();
+    fb_reg_t result = (fb_reg_t)fb_ahb_hrdata();
+    at_posedge_clk(); step_time_veri();
+    fb_ahb_idle();
+    return result;
+  }
+
+  #ifndef FB_CUSTOM_FLUSH_CACHE
+  static inline void flush_cache(void *addr, uint32_t bytes) { (void)addr; (void)bytes; }
+  #endif
+
 #else
   #define sim_fprintf(...)
 
