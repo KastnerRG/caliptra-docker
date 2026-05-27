@@ -1,0 +1,212 @@
+// FireBridge HAL harness (Mode B). Boots Caliptra over external s_axi (via
+// fb_axi_vip), then runs the UNMODIFIED test firmware natively on the host: the
+// firmware's lsu_*/printf/SEND_STDOUT_CTRL are redirected through the FB HAL
+// (firebridge/fb_hal/*.h) into this file, which performs real AHB-Lite
+// transactions over the internal Caliptra bus via fb_ahb_vip (the bypassed
+// VeeR's master). Two DPI scopes are in play:
+//   - fb_axi_vip : owns run_sim/clock; s_axi register access (boot)
+//   - u_fb_ahb   : internal AHB master; all firmware register access
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <csetjmp>
+#include "svdpi.h"
+
+static std::uint8_t mem[128u * 1024u * 1024u];
+
+#define FB_FW_WRAP_EXTERNAL_DPI
+#include "fb_fw_wrap.h"          // SIM defined -> fb_read_reg/fb_write_reg = s_axi path
+#include "caliptra_reg.h"
+
+extern "C" void *fb_get_mem_p() { return mem; }
+
+// The unmodified firmware's main(), renamed via -Dmain=fw_main (C linkage).
+extern "C" void fw_main(void);
+
+// ---- fb_axi_vip M-side DDR backing (must link; unused by crypto smoke tests) -
+extern "C" u8 fb_c_read_ddr8_addr32(u32 addr_32, void *p_mem) {
+  return *reinterpret_cast<u8 *>(static_cast<uintptr_t>(fb_widen_ptr(addr_32, p_mem)));
+}
+extern "C" void fb_c_write_ddr8_addr32(u32 addr_32, u8 data, void *p_mem) {
+  *reinterpret_cast<u8 *>(static_cast<uintptr_t>(fb_widen_ptr(addr_32, p_mem))) = data;
+}
+extern "C" u32 fb_c_read_ddr32_addr32(u32 addr_32, void *p_mem) {
+  return *reinterpret_cast<u32 *>(static_cast<uintptr_t>(fb_widen_ptr(addr_32, p_mem)));
+}
+extern "C" void fb_c_write_ddr32_addr32(u32 addr_32, u32 data, u8 strb, void *p_mem) {
+  u8 *ptr = reinterpret_cast<u8 *>(static_cast<uintptr_t>(fb_widen_ptr(addr_32, p_mem)));
+  if (strb == 0xF) { *reinterpret_cast<u32 *>(ptr) = data; return; }
+  for (int i = 0; i < 4; i++)
+    if ((strb >> i) & 1) ptr[i] = static_cast<u8>(data >> (i * 8));
+}
+
+// ---- internal-AHB master accessors (fb_ahb_vip export functions) ------------
+extern "C" void fb_ahb_drive(u8 hsel, u32 haddr, u64 hwdata, u8 hwrite, u8 hsize, u8 htrans, u8 hready);
+extern "C" u8   fb_ahb_hreadyout(void);
+extern "C" u8   fb_ahb_hresp(void);
+extern "C" u64  fb_ahb_hrdata(void);
+extern "C" void at_posedge_clk(void);
+extern "C" void step_time_veri(void);
+
+// AHB-Lite phase encodings (fb_fw_wrap.h defines these only in its AHB_SIM
+// branch, which SIM masks here; define locally).
+#ifndef FB_AHB_HSIZE_WORD
+#define FB_AHB_HSIZE_WORD    ((u8)2)
+#define FB_AHB_HTRANS_IDLE   ((u8)0)
+#define FB_AHB_HTRANS_NONSEQ ((u8)2)
+#endif
+
+namespace {
+
+constexpr int kPollLimit = 200000;
+
+svScope g_axi_scope = nullptr;   // fb_axi_vip (run_sim default scope)
+svScope g_ahb_scope = nullptr;   // u_fb_ahb
+std::jmp_buf g_done;             // test termination unwind target
+
+// Scope-correct primitives. at_posedge_clk() calls get_clk(), a DPI export in
+// fb_axi_vip's scope; the fb_ahb_* exports live in u_fb_ahb's scope. Set the
+// matching scope before each call.
+void clk_posedge() { svSetScope(g_axi_scope); at_posedge_clk(); }
+void clk_step()    { svSetScope(g_axi_scope); step_time_veri(); }
+void ahb_drive(u8 sel, u32 a, u64 d, u8 w, u8 sz, u8 tr, u8 rdy) {
+  svSetScope(g_ahb_scope); fb_ahb_drive(sel, a, d, w, sz, tr, rdy);
+}
+u8  ahb_hreadyout() { svSetScope(g_ahb_scope); return fb_ahb_hreadyout(); }
+u8  ahb_hresp()     { svSetScope(g_ahb_scope); return fb_ahb_hresp(); }
+u64 ahb_hrdata()    { svSetScope(g_ahb_scope); return fb_ahb_hrdata(); }
+
+void ahb_wait_ready(const char *op, u32 addr) {
+  int i;
+  for (i = 0; i < kPollLimit; i++) { if (ahb_hreadyout()) break; clk_step(); }
+  if (i >= kPollLimit) { std::fprintf(stderr, "FB_HAL: HREADYOUT timeout %s 0x%08x\n", op, addr); std::abort(); }
+  if (ahb_hresp())      { std::fprintf(stderr, "FB_HAL: HRESP error %s 0x%08x\n", op, addr); std::abort(); }
+}
+
+// 64-bit internal AHB: a 32-bit word lands on hwdata/hrdata [63:32] when
+// addr[2]==1, else [31:0]. Steer by addr&4.
+void ahb_write32(u32 addr, u32 data) {
+  clk_posedge(); clk_step();
+  ahb_drive(1, addr, 0, 1, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
+  clk_posedge(); clk_step();
+  ahb_drive(0, 0, ((addr & 0x4u) ? ((u64)data << 32) : (u64)data), 0,
+            FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+  ahb_wait_ready("write", addr);
+  clk_posedge(); clk_step();
+  ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+}
+
+u32 ahb_read32(u32 addr) {
+  clk_posedge(); clk_step();
+  ahb_drive(1, addr, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
+  clk_posedge(); clk_step();
+  ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+  ahb_wait_ready("read", addr);
+  clk_step();
+  u64 rd = ahb_hrdata();
+  u32 result = (addr & 0x4u) ? (u32)(rd >> 32) : (u32)rd;
+  clk_posedge(); clk_step();
+  ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+  return result;
+}
+
+// ---- boot over s_axi (fb_read_reg/fb_write_reg from fb_fw_wrap.h SIM path) ---
+constexpr std::uint32_t kUdsSeed[16] = {
+    0xe4046d05, 0x385ab789, 0xc6a72866, 0xe08350f9,
+    0x3f583e2a, 0x005ca0fa, 0xecc32b5c, 0xfc323d46,
+    0x1c76c107, 0x307654db, 0x5566a5bd, 0x693e227c,
+    0x14451624, 0x6a752c32, 0x9056d884, 0xdaf3c89d,
+};
+constexpr std::uint32_t kFieldEntropy[8] = {
+    0xb32e2b17, 0x1b638270, 0x34ebb0d1, 0x909f7ef1,
+    0xd51c5f82, 0xc1bb9bc2, 0x6bc4ac4d, 0xccdee835,
+};
+constexpr std::uint32_t kHekSeed[8] = {
+    0xb32e2b17, 0x1b638270, 0x34ebb0d1, 0x909f7ef1,
+    0xd51c5f82, 0xc1bb9bc2, 0x6bc4ac4d, 0xccdee835,
+};
+
+fb_reg_t *reg(std::uint32_t addr) {
+  return reinterpret_cast<fb_reg_t *>(static_cast<std::uintptr_t>(addr));
+}
+std::uint32_t soc_read(std::uint32_t addr)  { return (std::uint32_t)fb_read_reg(reg(addr)); }
+void soc_write(std::uint32_t addr, std::uint32_t d) { fb_write_reg(reg(addr), (fb_reg_t)d); }
+
+void wait_flow_bit(const char *name, std::uint32_t mask, bool set) {
+  for (int poll = 0; poll < kPollLimit; ++poll) {
+    const std::uint32_t v = soc_read(CLP_SOC_IFC_REG_CPTRA_FLOW_STATUS);
+    if (((v & mask) != 0u) == set) {
+      std::fprintf(stderr, "FB_HAL: %s after %d polls (flow=0x%08x)\n", name, poll + 1, v);
+      return;
+    }
+  }
+  std::fprintf(stderr, "FB_HAL: timeout waiting for %s\n", name);
+  std::abort();
+}
+
+void boot_caliptra() {
+  std::fprintf(stderr, "FB_HAL: boot via external s_axi\n");
+  wait_flow_bit("ready_for_fuses asserted", SOC_IFC_REG_CPTRA_FLOW_STATUS_READY_FOR_FUSES_MASK, true);
+  for (int i = 0; i < 5; ++i) at_posedge_clk();
+  for (int dw = 0; dw < 16; ++dw) soc_write(CLP_SOC_IFC_REG_FUSE_UDS_SEED_0 + 4u * dw, kUdsSeed[dw]);
+  for (int dw = 0; dw < 8; ++dw)  soc_write(CLP_SOC_IFC_REG_FUSE_FIELD_ENTROPY_0 + 4u * dw, kFieldEntropy[dw]);
+  for (int dw = 0; dw < 8; ++dw)  soc_write(CLP_SOC_IFC_REG_FUSE_HEK_SEED_0 + 4u * dw, kHekSeed[dw]);
+  soc_write(CLP_SOC_IFC_REG_FUSE_SOC_STEPPING_ID, 0u);
+  soc_write(CLP_SOC_IFC_REG_CPTRA_FUSE_WR_DONE, SOC_IFC_REG_CPTRA_FUSE_WR_DONE_DONE_MASK);
+  wait_flow_bit("ready_for_fuses deasserted", SOC_IFC_REG_CPTRA_FLOW_STATUS_READY_FOR_FUSES_MASK, false);
+  soc_write(CLP_SOC_IFC_REG_CPTRA_BOOTFSM_GO, SOC_IFC_REG_CPTRA_BOOTFSM_GO_GO_MASK);
+  std::fprintf(stderr, "FB_HAL: boot FSM go\n");
+}
+
+} // namespace
+
+// ---- FB HAL sinks called by the firmware (see firebridge/fb_hal/*.h) --------
+extern "C" void     fb_hal_write32(std::uintptr_t addr, u32 data) { ahb_write32((u32)addr, data); }
+extern "C" u32      fb_hal_read32 (std::uintptr_t addr)           { return ahb_read32((u32)addr); }
+extern "C" void     fb_hal_write8 (std::uintptr_t addr, u8 data) {
+  // Byte write via read-modify-write of the containing 32-bit word.
+  u32 word_addr = (u32)addr & ~0x3u;
+  unsigned shift = ((unsigned)addr & 0x3u) * 8u;
+  u32 w = ahb_read32(word_addr);
+  w = (w & ~(0xFFu << shift)) | ((u32)data << shift);
+  ahb_write32(word_addr, w);
+}
+// Route firmware STDOUT to the REAL generic-output-wires register over the
+// internal AHB, so caliptra_top_tb_services sees every byte exactly as on VeeR:
+// ASCII chars -> console dump, 0x7F -> MANUF lifecycle switch, 0xff/0x1 -> sim
+// end (incl. the TB's own "* TESTCASE PASSED" verdict). The firmware's text thus
+// comes out via the TB console dump; we deliberately do NOT echo it again here.
+// We longjmp out of the firmware on the terminal codes so we never fall into its
+// trailing while(1) (a TB $finish only sets a flag; it does not unwind C).
+static void fb_emit_wire(int c) {
+  ahb_write32(CLP_SOC_IFC_REG_CPTRA_GENERIC_OUTPUT_WIRES_0, (u32)(unsigned char)c);
+}
+extern "C" void fb_putc(int c) { fb_emit_wire(c); }
+extern "C" void fb_stdout_ctrl(int ctrl) {
+  fb_emit_wire(ctrl);                            // lets the TB act (0x7F, etc.)
+  if (ctrl == 0xff) std::longjmp(g_done, 1);     // firmware-reported pass
+  if (ctrl == 0x01) std::longjmp(g_done, 2);     // firmware-reported fail
+}
+
+extern "C" void run_sim(void *p_mem) {
+  (void)p_mem;
+  g_axi_scope = svGetScope();
+  g_ahb_scope = svGetScopeFromName("TOP.caliptra_top_tb.caliptra_top_dut.u_fb_ahb");
+  std::fprintf(stderr, "FB_HAL: axi_scope=%p ahb_scope=%p\n", (void *)g_axi_scope, (void *)g_ahb_scope);
+  if (!g_ahb_scope) { std::fprintf(stderr, "FB_HAL: u_fb_ahb scope not found\n"); std::abort(); }
+
+  boot_caliptra();                 // s_axi scope
+
+  const int rc = setjmp(g_done);
+  if (rc == 0) {
+    fw_main();                     // unmodified firmware; HAL drives internal AHB
+    std::fprintf(stderr, "FB_HAL: firmware returned without termination code\n");
+  } else if (rc == 2) {
+    std::fprintf(stderr, "FB_HAL: TEST FAILED (firmware SEND_STDOUT_CTRL 0x1)\n");
+    svSetScope(g_axi_scope);
+    std::abort();
+  } else {
+    std::fprintf(stderr, "FB_HAL: TEST PASSED (firmware SEND_STDOUT_CTRL 0xff)\n");
+  }
+  svSetScope(g_axi_scope);         // restore for fb_axi_vip end-of-sim
+}
