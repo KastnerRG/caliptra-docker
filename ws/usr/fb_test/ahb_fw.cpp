@@ -202,6 +202,37 @@ void sha512_abc_test() {
   std::fprintf(stderr, "FB_AHB sha512 PASS\n");
 }
 
+void hmac384_test() {
+  // Vectors copied verbatim from smoke_test_hmac.c (HMAC384, direct registers).
+  static const u32 key[12] = {
+    0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b,
+    0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b,
+    0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b};
+  static u32 block[32] = {0};
+  block[0] = 0x48692054u; block[1] = 0x68657265u; block[2] = 0x80000000u; block[31] = 0x00000440u;
+  static const u32 lfsr[12] = {
+    0xC8F518D4u, 0xF3AA1BD4u, 0x6ED56C1Cu, 0x3C9E16FBu, 0x800AF504u, 0xC8F518D4u,
+    0xF3AA1BD4u, 0x6ED56C1Cu, 0x3C9E16FBu, 0x800AF504u, 0xC8F518D4u, 0xF3AA1BD4u};
+  static const u32 expected[12] = {
+    0xb6a8d563u, 0x6f5c6a72u, 0x24f9977du, 0xcf7ee6c7u, 0xfb6d0c48u, 0xcbdee973u,
+    0x7a959796u, 0x489bddbcu, 0x4c5df61du, 0x5b3297b4u, 0xfb68dab9u, 0xf1b582c2u};
+  std::fprintf(stderr, "FB_AHB: HMAC384 over internal AHB\n");
+  ahb_poll(CLP_HMAC_REG_HMAC512_STATUS, 0x1u);                          // READY
+  for (int i = 0; i < 12; i++) ahb_write32(CLP_HMAC_REG_HMAC512_KEY_0 + i * 4, key[i]);
+  for (int i = 0; i < 32; i++) ahb_write32(CLP_HMAC_REG_HMAC512_BLOCK_0 + i * 4, block[i]);
+  for (int i = 0; i < 12; i++) ahb_write32(CLP_HMAC_REG_HMAC512_LFSR_SEED_0 + i * 4, lfsr[i]);
+  ahb_write32(CLP_HMAC_REG_HMAC512_CTRL, 0x1u);                         // INIT | MODE=HMAC384(0)
+  ahb_poll(CLP_HMAC_REG_HMAC512_STATUS, 0x2u);                          // VALID
+  for (int i = 0; i < 12; i++) {
+    u32 got = ahb_read32(CLP_HMAC_REG_HMAC512_TAG_0 + i * 4);
+    if (got != expected[i]) {
+      std::fprintf(stderr, "FB_AHB hmac FAIL: tag[%d] exp 0x%08x got 0x%08x\n", i, expected[i], got);
+      std::abort();
+    }
+  }
+  std::fprintf(stderr, "FB_AHB hmac PASS\n");
+}
+
 } // namespace
 
 extern "C" void run_sim(void *p_mem) {
@@ -217,6 +248,8 @@ extern "C" void run_sim(void *p_mem) {
   // (the scope-correct wrappers manage axi/ahb scope switching internally).
 #if defined(FB_TEST_smoke_test_sha512)
   sha512_abc_test();
+#elif defined(FB_TEST_smoke_test_hmac)
+  hmac384_test();
 #elif defined(FB_TEST_smoke_test_sha256)
   sha256_abc_test();
 #else
