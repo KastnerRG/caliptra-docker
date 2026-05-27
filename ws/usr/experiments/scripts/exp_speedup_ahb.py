@@ -2,7 +2,7 @@
 """Sweep Caliptra AHB-only tests: compare Firebridge AHB (Mode B, VeeR bypassed)
 vs standard verilator compile+run times."""
 
-import subprocess, time, csv, os
+import subprocess, time, csv, os, sys
 from pathlib import Path
 from datetime import datetime
 
@@ -14,6 +14,8 @@ TESTS = [
     "smoke_test_hmac",
     "smoke_test_datavault_basic",
 ]
+if len(sys.argv) > 1:           # optional subset: exp_speedup_ahb.py test1 test2 ...
+    TESTS = sys.argv[1:]
 # ─────────────────────────────────────────────────────────────────────────────
 
 USR           = Path(__file__).resolve().parents[2]   # ws/usr/

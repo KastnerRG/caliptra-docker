@@ -49,7 +49,7 @@ run_sha256() {
       -I"$rtl/integration/rtl" \
       -I"$rtl/libs/rtl" \
       -I"$rtl/sha256/rtl" \
-      -CFLAGS "$common_cflags" \
+      -CFLAGS "$common_cflags -DFB_AHB_DATA64" \
       "$rtl/integration/rtl/config_defines.svh" \
       "$rtl/libs/rtl/caliptra_macros.svh" \
       "$rtl/libs/rtl/caliptra_sva.svh" \

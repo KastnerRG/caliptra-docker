@@ -12,16 +12,17 @@ module sha256_ahb_tb;
   bit rstn;
   bit firebridge_done;
 
+  // 64-bit data bus to mirror the Caliptra internal AHB (CALIPTRA_AHB_HDATA_SIZE).
   bit        hsel;
   bit [31:0] haddr;
-  bit [31:0] hwdata;
+  bit [63:0] hwdata;
   bit        hwrite;
   bit [2:0]  hsize;
   bit [1:0]  htrans;
   bit        hready;
   bit        hreadyout;
   bit        hresp;
-  bit [31:0] hrdata;
+  bit [63:0] hrdata;
 
   initial begin
     rstn = 1'b0;
@@ -29,7 +30,10 @@ module sha256_ahb_tb;
     rstn = 1'b1;
   end
 
-  fb_ahb_vip fb_ahb_i (
+  fb_ahb_vip #(
+    .AHB_ADDR_WIDTH(32),
+    .AHB_DATA_WIDTH(64)
+  ) fb_ahb_i (
     .clk,
     .rstn,
     .firebridge_done,
@@ -46,7 +50,7 @@ module sha256_ahb_tb;
   );
 
   sha256_ctrl #(
-    .AHB_DATA_WIDTH(32),
+    .AHB_DATA_WIDTH(64),
     .AHB_ADDR_WIDTH(32)
   ) dut (
     .clk        (clk),

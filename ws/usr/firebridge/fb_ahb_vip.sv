@@ -30,6 +30,11 @@ module fb_ahb_vip #(
   fb_reg_64_t tmp_get_data;
   chandle p_mem;
 
+`ifndef CALIPTRA_FB_AHB
+  // Standalone mode (selfcheck/sha256): this VIP owns the clock-step DPI,
+  // run_sim, and the timing-based register tasks. In combined Caliptra Mode B
+  // (CALIPTRA_FB_AHB) fb_axi_vip owns those; here we keep only the bus-driving
+  // export functions further below.
 `ifdef VERILATOR
   function byte get_clk();
     get_clk = 8'(clk);
@@ -178,19 +183,22 @@ module fb_ahb_vip #(
   function automatic fb_reg_64_t fb_fn_read_reg();
     return tmp_get_data;
   endfunction
+`endif  // !CALIPTRA_FB_AHB
 
   // Workaround for Verilator 5.044 bug: signal assignments between DPI import
   // calls inside DPI export *tasks* are silently dropped from generated code.
   // DPI export *functions* (no timing semantics) are generated correctly.
   // So we expose bus-driving as functions and implement the protocol in C.
+  // hwdata_v is 64-bit so the same export works for the 32-bit standalone bus
+  // and the 64-bit Caliptra internal AHB (C side does any lane placement).
   function automatic void fb_ahb_drive(
-      input byte unsigned hsel_v,
-      input int  unsigned haddr_v,
-      input int  unsigned hwdata_v,
-      input byte unsigned hwrite_v,
-      input byte unsigned hsize_v,
-      input byte unsigned htrans_v,
-      input byte unsigned hready_v
+      input byte unsigned     hsel_v,
+      input int  unsigned     haddr_v,
+      input longint unsigned  hwdata_v,
+      input byte unsigned     hwrite_v,
+      input byte unsigned     hsize_v,
+      input byte unsigned     htrans_v,
+      input byte unsigned     hready_v
   );
     hsel   = hsel_v[0];
     haddr  = AHB_ADDR_WIDTH'(haddr_v);
@@ -212,11 +220,12 @@ module fb_ahb_vip #(
   endfunction
   export "DPI-C" function fb_ahb_hresp;
 
-  function automatic int unsigned fb_ahb_hrdata();
-    return hrdata;
+  function automatic longint unsigned fb_ahb_hrdata();
+    return 64'(hrdata);
   endfunction
   export "DPI-C" function fb_ahb_hrdata;
 
+`ifndef CALIPTRA_FB_AHB
 `ifdef VERILATOR
   `define AUTOMATIC
 `elsif XCELIUM
@@ -236,4 +245,18 @@ module fb_ahb_vip #(
     run_sim(p_mem);
     firebridge_done = 1'b1;
   end
+`else
+  // Combined Mode B: fb_axi_vip owns the clock and run_sim. Here we only idle
+  // the AHB master outputs at t=0; the C firmware drives them via fb_ahb_drive.
+  initial begin
+    firebridge_done = 1'b0;
+    hsel   = 1'b0;
+    haddr  = '0;
+    hwdata = '0;
+    hwrite = 1'b0;
+    hsize  = AHB_HSIZE_WORD;
+    htrans = AHB_HTRANS_IDLE;
+    hready = 1'b1;
+  end
+`endif
 endmodule

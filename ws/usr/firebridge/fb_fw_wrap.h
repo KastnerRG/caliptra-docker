@@ -75,11 +75,15 @@ extern EXT_C void *fb_get_mem_p(){
 
   // AHB bus is driven from C: SV exposes signal accessors as DPI export
   // *functions* (tasks have a Verilator 5.044 codegen bug, see fb_ahb_vip.sv).
-  extern EXT_C void fb_ahb_drive(u8 hsel, u32 haddr, u32 hwdata,
+  // hwdata/hrdata are 64-bit so the same ABI serves the 32-bit standalone bus
+  // and the 64-bit Caliptra internal AHB. Define FB_AHB_DATA64 for the 64-bit
+  // bus: a 32-bit word access is steered to hwdata[63:32]/hrdata[63:32] when
+  // address bit [2] is set (matches ahb_slv_sif lane selection).
+  extern EXT_C void fb_ahb_drive(u8 hsel, u32 haddr, u64 hwdata,
                                  u8 hwrite, u8 hsize, u8 htrans, u8 hready);
   extern EXT_C u8   fb_ahb_hreadyout(void);
   extern EXT_C u8   fb_ahb_hresp(void);
-  extern EXT_C u32  fb_ahb_hrdata(void);
+  extern EXT_C u64  fb_ahb_hrdata(void);
   extern EXT_C void at_posedge_clk(void);
   extern EXT_C void step_time_veri(void);
 
@@ -88,6 +92,18 @@ extern EXT_C void *fb_get_mem_p(){
   #define FB_AHB_HTRANS_NONSEQ ((u8)2)
   #ifndef FB_AHB_TIMEOUT
     #define FB_AHB_TIMEOUT 200000
+  #endif
+
+  #ifdef FB_AHB_DATA64
+    static inline u64 fb_ahb_wlane(u32 addr, fb_reg_t data) {
+      return (addr & 0x4u) ? ((u64)(u32)data << 32) : (u64)(u32)data;
+    }
+    static inline u32 fb_ahb_rlane(u32 addr, u64 rd) {
+      return (addr & 0x4u) ? (u32)(rd >> 32) : (u32)rd;
+    }
+  #else
+    static inline u64 fb_ahb_wlane(u32 addr, fb_reg_t data) { (void)addr; return (u64)(u32)data; }
+    static inline u32 fb_ahb_rlane(u32 addr, u64 rd) { (void)addr; return (u32)rd; }
   #endif
 
   static inline void fb_ahb_idle(void) {
@@ -117,7 +133,7 @@ extern EXT_C void *fb_get_mem_p(){
     fb_ahb_drive(1, addr, 0, 1, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
     // Data phase
     at_posedge_clk(); step_time_veri();
-    fb_ahb_drive(0, 0, (u32)data, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+    fb_ahb_drive(0, 0, fb_ahb_wlane(addr, data), 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
     fb_ahb_wait_ready("write", addr);
     at_posedge_clk(); step_time_veri();
     fb_ahb_idle();
@@ -133,7 +149,7 @@ extern EXT_C void *fb_get_mem_p(){
     fb_ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
     fb_ahb_wait_ready("read", addr);
     step_time_veri();
-    fb_reg_t result = (fb_reg_t)fb_ahb_hrdata();
+    fb_reg_t result = (fb_reg_t)fb_ahb_rlane(addr, fb_ahb_hrdata());
     at_posedge_clk(); step_time_veri();
     fb_ahb_idle();
     return result;
