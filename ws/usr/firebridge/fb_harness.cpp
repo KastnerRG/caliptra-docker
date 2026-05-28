@@ -12,6 +12,9 @@
 #include <csetjmp>
 #include "svdpi.h"
 
+// fb_caliptra_isr.c provides asm_wfi() which reflects hw interrupt-status regs into cptra_intr_rcv
+extern "C" void asm_wfi(void);
+
 static std::uint8_t mem[128u * 1024u * 1024u];
 
 #define FB_FW_WRAP_EXTERNAL_DPI
@@ -85,6 +88,22 @@ void ahb_wait_ready(const char *op, u32 addr) {
 
 // 64-bit internal AHB: a 32-bit word lands on hwdata/hrdata [63:32] when
 // addr[2]==1, else [31:0]. Steer by addr&4.
+// Byte-granular AHB write: HSIZE=byte (0), no read-modify-write.
+// Required for write-only AHB slaves such as the KMAC MSG_FIFO
+// (CLP_KMAC_MSG_FIFO_BASE_ADDR = 0x10040800) which return HRESP on reads.
+// Data is placed in the correct byte lane of the 64-bit internal AHB bus.
+void ahb_write8(u32 addr, u8 data) {
+  constexpr u8 kHsizeByte = 0;
+  clk_posedge(); clk_step();
+  ahb_drive(1, addr, 0, 1, kHsizeByte, FB_AHB_HTRANS_NONSEQ, 1);
+  clk_posedge(); clk_step();
+  u64 wdata = (u64)data << ((addr & 7u) * 8u);
+  ahb_drive(0, 0, wdata, 0, kHsizeByte, FB_AHB_HTRANS_IDLE, 1);
+  ahb_wait_ready("write8", addr);
+  clk_posedge(); clk_step();
+  ahb_drive(0, 0, 0, 0, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_IDLE, 1);
+}
+
 void ahb_write32(u32 addr, u32 data) {
   clk_posedge(); clk_step();
   ahb_drive(1, addr, 0, 1, FB_AHB_HSIZE_WORD, FB_AHB_HTRANS_NONSEQ, 1);
@@ -161,15 +180,19 @@ void boot_caliptra() {
 } // namespace
 
 // ---- FB HAL sinks called by the firmware (see firebridge/fb_hal/*.h) --------
-extern "C" void     fb_hal_write32(std::uintptr_t addr, u32 data) { ahb_write32((u32)addr, data); }
+extern "C" void     fb_hal_write32(std::uintptr_t addr, u32 data) {
+  ahb_write32((u32)addr, data);
+  // Writing KMAC_INTR_TEST or KMAC_CMD triggers an interrupt (done, error, etc.).
+  // Call asm_wfi() to reflect it into cptra_intr_rcv.sha3_notif/sha3_error immediately,
+  // so the firmware's interrupt-check loops see the updated struct.
+  if ((u32)addr == CLP_KMAC_INTR_TEST || (u32)addr == CLP_KMAC_CMD)
+    asm_wfi();
+}
 extern "C" u32      fb_hal_read32 (std::uintptr_t addr)           { return ahb_read32((u32)addr); }
 extern "C" void     fb_hal_write8 (std::uintptr_t addr, u8 data) {
-  // Byte write via read-modify-write of the containing 32-bit word.
-  u32 word_addr = (u32)addr & ~0x3u;
-  unsigned shift = ((unsigned)addr & 0x3u) * 8u;
-  u32 w = ahb_read32(word_addr);
-  w = (w & ~(0xFFu << shift)) | ((u32)data << shift);
-  ahb_write32(word_addr, w);
+  // Use proper byte-granular AHB write (HSIZE=byte, no read-modify-write).
+  // This avoids HRESP errors on write-only AHB slaves like KMAC MSG_FIFO.
+  ahb_write8((u32)addr, data);
 }
 // Route firmware STDOUT to the REAL generic-output-wires register over the
 // internal AHB, so caliptra_top_tb_services sees every byte exactly as on VeeR:

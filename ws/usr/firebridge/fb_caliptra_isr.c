@@ -45,4 +45,21 @@ void asm_wfi(void) {
     FB_REFLECT(abr_notif, abr_error,   // ML-DSA / ML-KEM
                CLP_ABR_REG_INTR_BLOCK_RF_NOTIF_INTERNAL_INTR_R,
                CLP_ABR_REG_INTR_BLOCK_RF_ERROR_INTERNAL_INTR_R);
+#ifdef FIREBRIDGE_HAS_SHA3
+    // SHA3/KMAC ISR: mirrors service_sha3_error_intr() / service_sha3_notif_intr() in caliptra_isr.h.
+    // The KMAC block uses KMAC_INTR_STATE (not SHA3_INTR_BLOCK_RF_*_INTERNAL_INTR_R) for the primary
+    // interrupt source. Reflect each relevant KMAC_INTR_STATE bit into cptra_intr_rcv.sha3_*.
+    {
+        uint32_t _kmac = lsu_read_32(CLP_KMAC_INTR_STATE);
+        if (_kmac & KMAC_INTR_STATE_KMAC_ERR_MASK) {
+            lsu_write_32(CLP_KMAC_INTR_STATE, KMAC_INTR_STATE_KMAC_ERR_MASK);
+            cptra_intr_rcv.sha3_error |= KMAC_INTR_STATE_KMAC_ERR_MASK;
+        }
+        uint32_t _notif = _kmac & (KMAC_INTR_STATE_KMAC_DONE_MASK | KMAC_INTR_STATE_FIFO_EMPTY_MASK);
+        if (_notif) {
+            lsu_write_32(CLP_KMAC_INTR_STATE, _notif);
+            cptra_intr_rcv.sha3_notif |= _notif;
+        }
+    }
+#endif
 }

@@ -11,24 +11,92 @@ from datetime import datetime
 # test -> crypto lib it pulls in (compiled natively for the HAL build). Add a
 # row once that lib's deref loops + wfi/nop are HAL-converted (see the
 # "add a test" recipe in engineering_lessons/caliptra_progress.md).
+# LIB_OF: test -> lib name (single lib, LIBROOT/{lib}/{lib}.c pattern)
+# MULTI_LIB_OF: test -> (space-sep srcs, space-sep dirs) for multi-lib tests
+# NO_LIB_SET: tests with no crypto lib (just caliptra_defines + printf)
 LIB_OF = {
     # T0 (original, bespoke C routine measured earlier)
     "smoke_test_sha256": "sha256",
     "smoke_test_sha512": "sha512",
     "smoke_test_hmac":   "hmac",
-    # T1 — added 2026-05-27, all HAL (unmodified firmware + minimal lib cleanup)
+    # T1 — added 2026-05-27
     "smoke_test_sha512_restore":  "sha512",
     "smoke_test_sha256_wntz":     "sha256",
     "smoke_test_sha256_wntz_rand": "sha256",
     "smoke_test_sha3_regs":       "sha3",
     "smoke_test_zeroize_crypto":  "hmac",
-    # smoke_test_hmac_errortrigger needs 2 libs: hmac + caliptra_rtl_lib.
-    # The single-lib LIB_OF pattern doesn't cover it; run manually:
-    # make ... TESTNAME=smoke_test_hmac_errortrigger FB_HAL=1 \
-    #   "FB_FW_LIB_SRCS=.../hmac/hmac.c .../caliptra_rtl_lib/caliptra_rtl_lib.c" \
-    #   "FB_FW_LIB_DIRS=.../hmac .../caliptra_rtl_lib"
+    # T2 — added 2026-05-28
+    "smoke_test_sha3":            "sha3",
+    "smoke_test_cshake":          "sha3",
+    "smoke_test_datavault_basic": "datavault",
+    "smoke_test_datavault_mini":  "datavault",
+    "smoke_test_kv_lock_use_mid_read": "",   # no crypto lib — PASS
+    "smoke_test_strap":           "",        # no crypto lib — PASS (implicit)
+    "smoke_test_sha3_externalmu": "sha3",  # mldsa.h via FB_ALL_LIB_DIRS; no mldsa HW
+    "smoke_test_sha3_interrupt":  "sha3",  # T4 — PASS (KMAC IRQ all 3 types)
+    "smoke_test_datavault_lock":  "datavault",   # T2 — PASS
+    "kv_entry_read_err":          "",            # T3 — PASS (no crypto lib needed)
+    "smoke_test_kv_write_scan_mode": "hmac",     # T3 — PASS (HMAC KV scan mode)
+    "smoke_test_doe_cg":          "",            # T3 — PASS (implicit; clk_gate stub; no lib)
+    "smoke_test_kv_cg":           "",            # T3 — PASS (implicit; clk_gate stub; no lib)
+    # OCP-skip tests: OCP_LOCK_MODE_EN=0 → "SS_MODE only" → immediate 0xff pass
+    "smoke_test_doe_kv_ocp_progress": "",        # T3 — PASS (OCP=0 skip)
+    "smoke_test_ecc_flow1_kv_ocp_progress": "ecc",  # T3 — PASS (OCP=0 skip)
+    "smoke_test_ecc_flow2_kv_ocp_progress": "ecc",  # T3 — PASS (OCP=0 skip)
+    # smoke_test_kv_rules_ocp_lock needs hmac+aes+ecc+mlkem+keyvault+soc_ifc+caliptra_rtl_lib; see MULTI_LIB_OF
+    "smoke_test_kv_securitystate": "",           # T3 — PASS (implicit; rst_count==1 block clean)
+    # smoke_test_mldsa_kv_ocp_progress needs mldsa+caliptra_rtl_lib; see MULTI_LIB_OF
+    # smoke_test_trng: needs CALIPTRA_INTERNAL_TRNG=1 to run TRNG (otherwise immediately skips)
+    # Run manually: make ... TESTNAME=smoke_test_trng FB_HAL=1 CALIPTRA_INTERNAL_TRNG=1 verilator
 }
-TESTS = list(LIB_OF)
+
+# Multi-lib tests: (FB_FW_LIB_SRCS string, FB_FW_LIB_DIRS string)
+MULTI_LIB_OF = {
+    # T1
+    "smoke_test_hmac_errortrigger": (
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    # T2
+    "pv_hash_zeroize": (
+        "sha512/sha512.c keyvault/keyvault.c",
+        "sha512 keyvault",
+    ),
+    # T3 — added 2026-05-28
+    "smoke_test_kv_hmac_flow": (
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    "smoke_test_fw_kv_backtoback_hmac": (
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    "smoke_test_hek_flow": (
+        "doe/doe.c hmac/hmac.c",
+        "doe hmac",
+    ),
+    "smoke_test_doe_rand": (
+        "",   # no crypto lib: test uses lsu_* directly
+        "",
+    ),
+    "smoke_test_hmac_kv_ocp_progress": (
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    "smoke_test_mldsa_kv_ocp_progress": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_doe": (
+        "doe/doe.c ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c mldsa/mldsa.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "doe ecc hmac sha512 sha256 mldsa keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_rules_ocp_lock": (
+        "hmac/hmac.c aes/aes.c ecc/ecc.c mlkem/mlkem.c keyvault/keyvault.c soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac aes ecc mlkem keyvault soc_ifc caliptra_rtl_lib",
+    ),
+}
+TESTS = list(LIB_OF) + list(MULTI_LIB_OF)
 if len(sys.argv) > 1:           # optional subset: exp_speedup_ahb.py test1 test2 ...
     TESTS = sys.argv[1:]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,11 +146,22 @@ for test in TESTS:
     for d in [run_fb, run_nofb]:
         d.mkdir(parents=True, exist_ok=True)
 
-    lib       = LIB_OF.get(test, test.replace("smoke_test_", ""))
     base_vars = f"TESTNAME={test}"
-    fb_vars   = (f"{base_vars} FB_HAL=1 "
-                 f"FB_FW_LIB_SRCS={LIBROOT}/{lib}/{lib}.c "
-                 f"FB_FW_LIB_DIRS={LIBROOT}/{lib}")
+    if test in MULTI_LIB_OF:
+        srcs_rel, dirs_rel = MULTI_LIB_OF[test]
+        srcs = " ".join(f"{LIBROOT}/{s}" for s in srcs_rel.split())
+        dirs = " ".join(f"{LIBROOT}/{d}" for d in dirs_rel.split())
+        fb_vars = (f'{base_vars} FB_HAL=1 '
+                   f'"FB_FW_LIB_SRCS={srcs}" '
+                   f'"FB_FW_LIB_DIRS={dirs}"')
+    else:
+        lib = LIB_OF.get(test, test.replace("smoke_test_", ""))
+        if lib:
+            fb_vars = (f"{base_vars} FB_HAL=1 "
+                       f"FB_FW_LIB_SRCS={LIBROOT}/{lib}/{lib}.c "
+                       f"FB_FW_LIB_DIRS={LIBROOT}/{lib}")
+        else:
+            fb_vars = f'{base_vars} FB_HAL=1 FB_FW_LIB_SRCS="" FB_FW_LIB_DIRS=""'
 
     # ── Firmware (untimed, shared defines.h) ─────────────────────────────────
     print("[setup] building firmware...")
