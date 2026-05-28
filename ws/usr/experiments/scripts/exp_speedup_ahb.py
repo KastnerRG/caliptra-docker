@@ -12,9 +12,21 @@ from datetime import datetime
 # row once that lib's deref loops + wfi/nop are HAL-converted (see the
 # "add a test" recipe in engineering_lessons/caliptra_progress.md).
 LIB_OF = {
+    # T0 (original, bespoke C routine measured earlier)
     "smoke_test_sha256": "sha256",
     "smoke_test_sha512": "sha512",
     "smoke_test_hmac":   "hmac",
+    # T1 — added 2026-05-27, all HAL (unmodified firmware + minimal lib cleanup)
+    "smoke_test_sha512_restore":  "sha512",
+    "smoke_test_sha256_wntz":     "sha256",
+    "smoke_test_sha256_wntz_rand": "sha256",
+    "smoke_test_sha3_regs":       "sha3",
+    "smoke_test_zeroize_crypto":  "hmac",
+    # smoke_test_hmac_errortrigger needs 2 libs: hmac + caliptra_rtl_lib.
+    # The single-lib LIB_OF pattern doesn't cover it; run manually:
+    # make ... TESTNAME=smoke_test_hmac_errortrigger FB_HAL=1 \
+    #   "FB_FW_LIB_SRCS=.../hmac/hmac.c .../caliptra_rtl_lib/caliptra_rtl_lib.c" \
+    #   "FB_FW_LIB_DIRS=.../hmac .../caliptra_rtl_lib"
 }
 TESTS = list(LIB_OF)
 if len(sys.argv) > 1:           # optional subset: exp_speedup_ahb.py test1 test2 ...
