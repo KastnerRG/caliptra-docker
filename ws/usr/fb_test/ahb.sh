@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runs all AHB-Lite-only FireBridge tests (no VeeR, no interrupts):
+# Runs the FireBridge AHB tests. Two flavours:
+#
+# Standalone block-level (Mode C, fast VIP/RTL sanity, no SoC/boot):
 #   - selfcheck : fb_ahb_vip drives a toy AHB memory (RTL sanity of the VIP)
 #   - sha256    : fb_ahb_vip drives the real Caliptra sha256_ctrl AHB slave
 #                 and the C firmware self-checks SHA256("abc").
 #
+# Full-SoC HAL (Mode B, VeeR bypassed, boot over s_axi, the UNMODIFIED upstream
+# test firmware run natively over the internal AHB via the FB HAL, FB_HAL=1):
+#   - hal_sha256 / hal_sha512 / hal_hmac : real smoke_test_*.c + crypto lib,
+#     each ends with the TB's own "* TESTCASE PASSED".
+#
 # Usage: ./ahb.sh [test ...]   (default: all)
+#   e.g. ./ahb.sh hal_hmac          # one full-SoC HAL test
+#        ./ahb.sh selfcheck sha256  # just the fast standalone checks
 
 fb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace_root="$(cd "$fb_root/.." && pwd)"
@@ -72,7 +81,27 @@ run_sha256() {
   )
 }
 
-tests=(selfcheck sha256)
+# Full-SoC HAL tests run the real firmware via the main Makefile (FB_HAL=1).
+mk="$CALIPTRA_ROOT/tools/scripts/Makefile"
+libroot="$CALIPTRA_ROOT/src/integration/test_suites/libs"
+
+run_hal() {  # $1=short label  $2=TESTNAME  $3=crypto lib dir/name
+  local short="$1" testname="$2" lib="$3"
+  local run_dir="$CALIPTRA_WORKSPACE/work/fb_hal_$short"
+  rm -rf "$run_dir"; mkdir -p "$run_dir"
+  echo "### FB_HAL: $testname (full-SoC, unmodified firmware over internal AHB)"
+  make -C "$run_dir" -f "$mk" \
+    CALIPTRA_ROOT="$CALIPTRA_ROOT" CALIPTRA_WORKSPACE="$CALIPTRA_WORKSPACE" \
+    TESTNAME="$testname" FB_HAL=1 \
+    FB_FW_LIB_SRCS="$libroot/$lib/$lib.c" FB_FW_LIB_DIRS="$libroot/$lib" \
+    verilator
+}
+
+run_hal_sha256() { run_hal sha256 smoke_test_sha256 sha256; }
+run_hal_sha512() { run_hal sha512 smoke_test_sha512 sha512; }
+run_hal_hmac()   { run_hal hmac   smoke_test_hmac   hmac;   }
+
+tests=(selfcheck sha256 hal_sha256 hal_sha512 hal_hmac)
 if [[ $# -gt 0 ]]; then
   tests=("$@")
 fi

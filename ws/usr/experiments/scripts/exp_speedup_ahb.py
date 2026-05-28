@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Sweep Caliptra AHB-only tests: compare Firebridge AHB (Mode B, VeeR bypassed)
-vs standard verilator compile+run times."""
+"""Sweep Caliptra AHB tests via the FireBridge HAL (Mode B, VeeR bypassed): the
+UNMODIFIED upstream test firmware runs natively over the internal AHB (FB_HAL=1).
+Compares FB-HAL vs standard verilator compile+run times."""
 
 import subprocess, time, csv, os, sys
 from pathlib import Path
 from datetime import datetime
 
 # ── Knobs ────────────────────────────────────────────────────────────────────
-TESTS = [
-    "smoke_test_sha256",
-    "smoke_test_sha512",
-    "smoke_test_sha3",
-    "smoke_test_hmac",
-    "smoke_test_datavault_basic",
-]
+# test -> crypto lib it pulls in (compiled natively for the HAL build). Add a
+# row once that lib's deref loops + wfi/nop are HAL-converted (see the
+# "add a test" recipe in engineering_lessons/caliptra_progress.md).
+LIB_OF = {
+    "smoke_test_sha256": "sha256",
+    "smoke_test_sha512": "sha512",
+    "smoke_test_hmac":   "hmac",
+}
+TESTS = list(LIB_OF)
 if len(sys.argv) > 1:           # optional subset: exp_speedup_ahb.py test1 test2 ...
     TESTS = sys.argv[1:]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -22,6 +25,7 @@ USR           = Path(__file__).resolve().parents[2]   # ws/usr/
 WORKSPACE     = USR.parent                             # ws/
 CALIPTRA_ROOT = USR / "caliptra-rtl"
 MAKEFILE      = CALIPTRA_ROOT / "tools/scripts/Makefile"
+LIBROOT       = CALIPTRA_ROOT / "src/integration/test_suites/libs"
 WORK          = WORKSPACE / "work"
 RUNS          = USR / "experiments" / "runs"
 RUNS.mkdir(parents=True, exist_ok=True)
@@ -57,28 +61,32 @@ for test in TESTS:
     print(f"\n=== {test} ===")
     WORK.mkdir(parents=True, exist_ok=True)
 
-    run_fb   = WORK / f"{test}_fb_ahb"
+    run_fb   = WORK / f"{test}_fb_hal"
     run_nofb = WORK / f"{test}_no_fb"
     for d in [run_fb, run_nofb]:
         d.mkdir(parents=True, exist_ok=True)
 
+    lib       = LIB_OF.get(test, test.replace("smoke_test_", ""))
     base_vars = f"TESTNAME={test}"
-    fb_vars   = f"{base_vars} FB_AHB=1"
+    fb_vars   = (f"{base_vars} FB_HAL=1 "
+                 f"FB_FW_LIB_SRCS={LIBROOT}/{lib}/{lib}.c "
+                 f"FB_FW_LIB_DIRS={LIBROOT}/{lib}")
 
     # ── Firmware (untimed, shared defines.h) ─────────────────────────────────
     print("[setup] building firmware...")
     sh(make(run_nofb, "program.hex", base_vars))
     sh(make(run_fb,   "program.hex", fb_vars))
 
-    # ── Firebridge AHB compile ───────────────────────────────────────────────
+    # ── FireBridge HAL compile (incl. native firmware objects) ───────────────
     sh(f"rm -rf {run_fb}/obj_dir {run_fb}/verilator-build "
-       f"{run_fb}/verilator_build.log {run_fb}/verilator_make.log")
+       f"{run_fb}/verilator_build.log {run_fb}/verilator_make.log "
+       f"{run_fb}/.fbfw_built {run_fb}/fbfw_*.o")
     print("[FB] compile...")
     fb_compile = timed(make(run_fb, "verilator-build", fb_vars))
     print(f"[FB] compile: {fb_compile}s")
 
     print("[FB] run...")
-    fb_run = timed(f"{run_fb}/obj_dir/Vcaliptra_top_tb +CLP_REGRESSION",
+    fb_run = timed(f"{run_fb}/obj_dir/Vcaliptra_top_tb",
                    cwd=run_fb)
     print(f"[FB] run: {fb_run}s")
 
