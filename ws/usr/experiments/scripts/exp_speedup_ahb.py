@@ -186,6 +186,23 @@ MULTI_LIB_OF = {
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mldsa caliptra_rtl_lib",
     ),
+    # T4 — hw_config: reads CPTRA_HW_CONFIG register, checks ITRNG/LMS/SUBSYSTEM bits
+    "smoke_test_hw_config": ("", ""),
+    # T7 — mldsa_edge: edge-case inputs with direct MLDSA_CTRL, TB inject 0xd7
+    "smoke_test_mldsa_edge": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T3 — randomized PCR+ECC signing (TB inject privkey, many random ECC sign iterations)
+    "randomized_pcr_ecc_signing": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    # T3 — KV crypto chain (DOE→KV, ECC keygen/sign, HMAC, SHA, MLDSA)
+    "smoke_test_kv_crypto_flow": (
+        "ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c doe/doe.c mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc hmac sha512 sha256 doe mldsa caliptra_rtl_lib",
+    ),
     # T7 — smoke_test_mldsa: full keygen+sign+verify flow
     "smoke_test_mldsa": (
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
