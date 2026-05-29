@@ -91,6 +91,115 @@ MULTI_LIB_OF = {
         "doe/doe.c ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c mldsa/mldsa.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "doe ecc hmac sha512 sha256 mldsa keyvault caliptra_rtl_lib",
     ),
+    # T3 — ecc/hmac KV flows
+    "smoke_test_kv_hmac_multiblock_flow": (
+        "hmac/hmac.c ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_ecc_flow1": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_ecc_flow2": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_swwe_lock": (
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_mldsa": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T3 — ECC standalone tests (no reset commands, no volatile ptr issues)
+    "smoke_test_ecc_keygen": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_sign": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_verify": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecdh": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    # T7 — ML-KEM KV flow (no volatile ptr issues)
+    "smoke_test_mlkem_kv": (
+        "mlkem/mlkem.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mlkem caliptra_rtl_lib",
+    ),
+    # T7 — ML-KEM KV OCP progress (OCP=0→SS_MODE skip)
+    "smoke_test_mlkem_kv_ocp_progress": (
+        "mlkem/mlkem.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mlkem caliptra_rtl_lib",
+    ),
+    # T7 — ML-KEM all-zero seed (no volatile ptr issues, just mlkem.c)
+    "smoke_test_mlkem_all_zero_seed": (
+        "mlkem/mlkem.c",
+        "mlkem",
+    ),
+    # T7 — ML-KEM standard test (keygen/encaps/decaps checks, just mlkem.c)
+    "smoke_test_mlkem": (
+        "mlkem/mlkem.c",
+        "mlkem",
+    ),
+    # T7 — randomized ML-DSA invalid verify
+    "randomized_mldsa_invalid_verify": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T7 — ML-KEM locked API test
+    "smoke_test_mlkem_locked_api": (
+        "mlkem/mlkem.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mlkem caliptra_rtl_lib",
+    ),
+    # T7 — ML-DSA tests with no volatile ptr or reset issues
+    "mldsa_pcr_inject_failure": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "randomized_pcr_mldsa_signing": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T3 — KV parallel access (all crypto in parallel, HW-dominated)
+    "smoke_test_kv_parallel_access": (
+        "ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c doe/doe.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc hmac sha512 sha256 doe caliptra_rtl_lib",
+    ),
+    # T7 — ML-DSA KAT and random tests (no volatile ptr issues)
+    "smoke_test_mldsa_kat": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_mldsa_keygen_sign_vfy_rand": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_mldsa_keygen_standalone_sign_vfy_rand": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_mldsa_sign_rnd": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T2 — PCR signing (TB inject sets up ECC key via KV slot, then PCR sign)
+    "smoke_test_pcr_signing": (
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    # T2 — PCR zeroize (TB inject: ECC+MLDSA, then zeroize)
+    "smoke_test_pcr_zeroize": (
+        "ecc/ecc.c mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc mldsa caliptra_rtl_lib",
+    ),
     "smoke_test_kv_rules_ocp_lock": (
         "hmac/hmac.c aes/aes.c ecc/ecc.c mlkem/mlkem.c keyvault/keyvault.c soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "hmac aes ecc mlkem keyvault soc_ifc caliptra_rtl_lib",

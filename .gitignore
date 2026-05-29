@@ -3,4 +3,6 @@ ws/work*
 ws/scripts/*.log
 ws/usr/experiments/runs
 
+ws/usr/work/
+*.hex
 __pycache__
