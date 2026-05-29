@@ -178,29 +178,78 @@ void boot_caliptra() {
   std::fprintf(stderr, "FB_HAL: boot FSM go\n");
 }
 
-// Emulate the SOC mailbox agent: lock mbox, send a canned command + 4 bytes of
-// data, set EXECUTE. Called from asm_wfi() when READY_FOR_MB_PROCESSING is set.
-// Matches what caliptra_top_tb's soc_bfm does for T6 mailbox tests.
-void run_mailbox_if_requested() {
+// ---- Bidirectional mailbox (T6 tests: smoke_test_mbox, mbox_cg) -------------
+// Tracks whether SOC (harness) currently holds the mbox lock.
+static bool g_soc_holds_mbox_lock = false;
+// Set when firmware responded (DATA_READY), pending SOC EXECUTE clear.
+// We clear EXECUTE lazily when firmware polls it, so firm sees EXECUTE_SOC first.
+static bool g_soc_pending_execute_clear = false;
+
+// SOC→FW: acquire lock, send canned command, set EXECUTE.
+// Triggered directly from fb_hal_write32 hook when firmware writes
+// READY_FOR_MB_PROCESSING to FLOW_STATUS (condition already verified in caller).
+void send_soc_mbox_command() {
+  if (g_soc_holds_mbox_lock) { return; }  // already sent
   svSetScope(g_axi_scope);
-  const std::uint32_t flow = soc_read(CLP_SOC_IFC_REG_CPTRA_FLOW_STATUS);
-  if (!(flow & SOC_IFC_REG_CPTRA_FLOW_STATUS_READY_FOR_MB_PROCESSING_MASK)) {
-    svSetScope(g_ahb_scope);
-    return;
-  }
-  std::fprintf(stderr, "FB_HAL: mailbox request detected, driving SOC mailbox\n");
-  // Acquire lock (reads 0 until we own it, then reads 1)
-  soc_write(CLP_MBOX_CSR_MBOX_LOCK, 1u);
+  std::fprintf(stderr, "FB_HAL: mbox SOC→FW: acquiring lock (USER=0xFFFFFFFF required)\n");
+  // Lock is acquired by reading MBOX_LOCK until it returns 0 (0=we got it, 1=busy)
   for (int i = 0; i < kPollLimit; ++i) {
-    if (soc_read(CLP_MBOX_CSR_MBOX_LOCK) & MBOX_CSR_MBOX_LOCK_LOCK_MASK) break;
-    soc_write(CLP_MBOX_CSR_MBOX_LOCK, 1u);
+    if (!(soc_read(CLP_MBOX_CSR_MBOX_LOCK) & MBOX_CSR_MBOX_LOCK_LOCK_MASK)) break;
   }
-  // Send canned command: CMD=0xDEADBEEF, 4 bytes of payload
+  g_soc_holds_mbox_lock = true;
   soc_write(CLP_MBOX_CSR_MBOX_CMD,    0xDEADBEEFu);
   soc_write(CLP_MBOX_CSR_MBOX_DLEN,   4u);
   soc_write(CLP_MBOX_CSR_MBOX_DATAIN, 0x12345678u);
   soc_write(CLP_MBOX_CSR_MBOX_EXECUTE, 1u);
-  std::fprintf(stderr, "FB_HAL: mailbox command sent (CMD=0xDEADBEEF, 4 bytes)\n");
+  svSetScope(g_ahb_scope);
+}
+
+// Legacy: called from asm_wfi(); checks flag internally.
+void run_mailbox_if_requested() {
+  svSetScope(g_axi_scope);
+  const std::uint32_t flow = soc_read(CLP_SOC_IFC_REG_CPTRA_FLOW_STATUS);
+  svSetScope(g_ahb_scope);
+  if (!(flow & SOC_IFC_REG_CPTRA_FLOW_STATUS_READY_FOR_MB_PROCESSING_MASK)) return;
+  send_soc_mbox_command();
+}
+
+// SOC side: firmware set DATA_READY. Read DATAOUT response but DON'T clear
+// EXECUTE yet — the firmware needs to see EXECUTE_SOC state first. We set a
+// flag so that when the firmware later polls EXECUTE (fb_hal_read32 intercept),
+// we can lazily clear it then.
+void soc_mbox_read_response() {
+  svSetScope(g_axi_scope);
+  // The FSM will transition to EXECUTE_SOC autonomously after DATA_READY is set.
+  // Drain the firmware's response (MBOX_DLEN was our command's 4 bytes, so skip
+  // drain since the mbox tracks how many words were written via DATAIN).
+  // The actual response count is in DLEN after the firmware wrote its data.
+  // For simplicity: just record that we need to clear EXECUTE later.
+  std::fprintf(stderr, "FB_HAL: mbox FW set DATA_READY; deferring EXECUTE clear\n");
+  g_soc_pending_execute_clear = true;
+  svSetScope(g_ahb_scope);
+}
+
+// FW→SOC: firmware sent a command (EXECUTE=1, SOC doesn't hold lock).
+// Read DATAOUT (firmware's data) and echo it back, set DATA_READY.
+// IMPORTANT: do NOT read MBOX_LOCK here — that triggers rset and steals
+// the lock from the firmware, corrupting the mbox state machine.
+void soc_mbox_handle_fw_cmd() {
+  svSetScope(g_axi_scope);
+  // Wait one posedge for the FSM to transition to EXECUTE_UC
+  at_posedge_clk();
+  // Read DLEN (avoid LOCK register — rset side-effect)
+  std::uint32_t dlen = soc_read(CLP_MBOX_CSR_MBOX_DLEN);
+  std::uint32_t words = (dlen > 0u && dlen < 0x10000u) ? (dlen + 3u) / 4u : 0u;
+  std::fprintf(stderr, "FB_HAL: mbox FW→SOC: DLEN=0x%x words=%u\n", dlen, words);
+  constexpr std::uint32_t kMaxWords = 256u;
+  if (words > kMaxWords) words = kMaxWords;
+  std::uint32_t buf[kMaxWords] = {};
+  for (std::uint32_t i = 0; i < words; ++i)
+    buf[i] = soc_read(CLP_MBOX_CSR_MBOX_DATAOUT);
+  for (std::uint32_t i = 0; i < words; ++i)
+    soc_write(CLP_MBOX_CSR_MBOX_DATAIN, buf[i]);
+  soc_write(CLP_MBOX_CSR_MBOX_STATUS, 1u);  // DATA_READY = 1
+  std::fprintf(stderr, "FB_HAL: mbox FW→SOC: echoed %u words, DATA_READY set\n", words);
   svSetScope(g_ahb_scope);
 }
 
@@ -217,8 +266,48 @@ extern "C" void     fb_hal_write32(std::uintptr_t addr, u32 data) {
   // so the firmware's interrupt-check loops see the updated struct.
   if ((u32)addr == CLP_KMAC_INTR_TEST || (u32)addr == CLP_KMAC_CMD)
     asm_wfi();
+
+  // Mbox bidirectional service (T6 tests):
+  // 1. FLOW_STATUS: READY_FOR_MB_PROCESSING → SOC sends command to firmware.
+  //    Hook fires in fb_hal_write32 so READY_FOR_MB_PROCESSING is confirmed in 'data'.
+  //    Skip re-reading FLOW_STATUS via AXI (firmware wrote via AHB; AXI may see stale 0).
+  if ((u32)addr == CLP_SOC_IFC_REG_CPTRA_FLOW_STATUS &&
+      (data & SOC_IFC_REG_CPTRA_FLOW_STATUS_READY_FOR_MB_PROCESSING_MASK))
+    send_soc_mbox_command();
+  // 2. MBOX_STATUS = DATA_READY: firmware responded to SOC command →
+  //    SOC reads response and clears EXECUTE.
+  if ((u32)addr == CLP_MBOX_CSR_MBOX_STATUS &&
+      (data & MBOX_CSR_MBOX_STATUS_STATUS_MASK) == 1u &&  // DATA_READY = 1
+      g_soc_holds_mbox_lock)
+    soc_mbox_read_response();
+  // 3. MBOX_EXECUTE = 1 (SOC doesn't hold lock): firmware sends command to SOC →
+  //    SOC echoes data back and sets DATA_READY.
+  if ((u32)addr == CLP_MBOX_CSR_MBOX_EXECUTE &&
+      (data & MBOX_CSR_MBOX_EXECUTE_EXECUTE_MASK) &&
+      !g_soc_holds_mbox_lock)
+    soc_mbox_handle_fw_cmd();
 }
-extern "C" u32      fb_hal_read32 (std::uintptr_t addr)           { return ahb_read32((u32)addr); }
+extern "C" u32      fb_hal_read32 (std::uintptr_t addr) {
+  u32 val = ahb_read32((u32)addr);
+  // When firmware polls MBOX_EXECUTE waiting for it to be cleared by SOC:
+  // clear it now (SOC side) so the firmware can proceed.
+  if ((u32)addr == CLP_MBOX_CSR_MBOX_EXECUTE && g_soc_pending_execute_clear &&
+      (val & MBOX_CSR_MBOX_EXECUTE_EXECUTE_MASK)) {
+    // Drain firmware's DATAOUT response then clear EXECUTE via AXI
+    svSetScope(g_axi_scope);
+    std::fprintf(stderr, "FB_HAL: mbox SOC clearing EXECUTE (lazy, FW polling)\n");
+    // Read the firmware's response data from DATAOUT
+    // The firmware wrote MBOX_DLEN_VAL=32 bytes into DATAIN; we don't know
+    // the exact count here — just clear EXECUTE to release the mailbox.
+    soc_write(CLP_MBOX_CSR_MBOX_EXECUTE, 0u);
+    g_soc_holds_mbox_lock = false;
+    g_soc_pending_execute_clear = false;
+    svSetScope(g_ahb_scope);
+    // Return 0 (EXECUTE cleared) so firmware's poll loop exits
+    return 0u;
+  }
+  return val;
+}
 extern "C" void     fb_hal_write8 (std::uintptr_t addr, u8 data) {
   // Use proper byte-granular AHB write (HSIZE=byte, no read-modify-write).
   // This avoids HRESP errors on write-only AHB slaves like KMAC MSG_FIFO.

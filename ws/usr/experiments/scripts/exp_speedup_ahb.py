@@ -274,6 +274,18 @@ MULTI_LIB_OF = {
         "ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c doe/doe.c mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "ecc hmac sha512 sha256 doe mldsa caliptra_rtl_lib",
     ),
+    "smoke_test_mbox": (                        # T6: bidirectional mailbox (SOC↔FW)
+        "soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc caliptra_rtl_lib",
+    ),
+    "smoke_test_mbox_cg": (                     # T6: mailbox with clock gating
+        "soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc caliptra_rtl_lib",
+    ),
+    "smoke_test_mbox_byte_read": (              # T6: mailbox SRAM byte-read
+        "soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc caliptra_rtl_lib",
+    ),
 }
 
 # Tests needing extra FW CFLAGS (e.g. hardware config defines).
