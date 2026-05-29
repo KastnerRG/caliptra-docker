@@ -17,6 +17,16 @@
 
 extern volatile caliptra_intr_received_s cptra_intr_rcv;
 
+// intr_count is the firmware's global interrupt counter (incremented by the real
+// VeeR PLIC ISR). In FB_HAL there is no PLIC, so asm_wfi() increments it whenever
+// any new interrupt is reflected — matching what the VeeR ISR would do.
+extern volatile uint32_t intr_count;
+
+// fb_hal_check_mailbox() is implemented in fb_harness.cpp. It drives the SOC-side
+// mailbox handshake (lock, CMD, DATA, EXECUTE) when READY_FOR_MB_PROCESSING is set,
+// emulating what caliptra's soc_bfm does for T6 tests.
+extern void fb_hal_check_mailbox(void);
+
 void init_interrupts(void) {}
 
 // Reflect one block's NOTIF and ERROR interrupt-status registers into the
@@ -30,6 +40,17 @@ void init_interrupts(void) {}
     } while (0)
 
 void asm_wfi(void) {
+    // SOC mailbox: drive the s_axi mailbox protocol when firmware sets
+    // READY_FOR_MB_PROCESSING (emulates the soc_bfm in caliptra's TB).
+    fb_hal_check_mailbox();
+
+    // Snapshot pre-reflection interrupt state to detect new firings.
+    uint32_t pre_notif = cptra_intr_rcv.sha256_notif | cptra_intr_rcv.sha512_notif |
+                         cptra_intr_rcv.hmac_notif   | cptra_intr_rcv.ecc_notif    |
+                         cptra_intr_rcv.abr_notif     | cptra_intr_rcv.sha256_error |
+                         cptra_intr_rcv.sha512_error  | cptra_intr_rcv.hmac_error  |
+                         cptra_intr_rcv.ecc_error     | cptra_intr_rcv.abr_error;
+
     FB_REFLECT(sha256_notif, sha256_error,
                CLP_SHA256_REG_INTR_BLOCK_RF_NOTIF_INTERNAL_INTR_R,
                CLP_SHA256_REG_INTR_BLOCK_RF_ERROR_INTERNAL_INTR_R);
@@ -45,6 +66,18 @@ void asm_wfi(void) {
     FB_REFLECT(abr_notif, abr_error,   // ML-DSA / ML-KEM
                CLP_ABR_REG_INTR_BLOCK_RF_NOTIF_INTERNAL_INTR_R,
                CLP_ABR_REG_INTR_BLOCK_RF_ERROR_INTERNAL_INTR_R);
+    // PLIC emulation: increment the firmware's interrupt counter when any new
+    // interrupt was reflected. This matches what VeeR's PLIC ISR does (calls the
+    // ISR handler which increments intr_count). Required for c_intr_handler.
+    {
+        uint32_t post_notif = cptra_intr_rcv.sha256_notif | cptra_intr_rcv.sha512_notif |
+                              cptra_intr_rcv.hmac_notif   | cptra_intr_rcv.ecc_notif    |
+                              cptra_intr_rcv.abr_notif     | cptra_intr_rcv.sha256_error |
+                              cptra_intr_rcv.sha512_error  | cptra_intr_rcv.hmac_error  |
+                              cptra_intr_rcv.ecc_error     | cptra_intr_rcv.abr_error;
+        if (post_notif != pre_notif) intr_count++;
+    }
+
 #ifdef FIREBRIDGE_HAS_SHA3
     // SHA3/KMAC ISR: mirrors service_sha3_error_intr() / service_sha3_notif_intr() in caliptra_isr.h.
     // The KMAC block uses KMAC_INTR_STATE (not SHA3_INTR_BLOCK_RF_*_INTERNAL_INTR_R) for the primary

@@ -391,7 +391,10 @@ import el2_pkg::*;
   assign dmi_active       = '0;
 
   // el2_mem_export interface outputs (veer_sram_src modport)
-  assign el2_mem_export.clk             = '0;
+  // Clock ICCM/DCCM from the system clock (not from VeeR's gated clock) so
+  // the SRAM remains functional for tests like smoke_test_sram_ecc that inject
+  // ECC errors into the VeeR SRAM banks via the TB services interface.
+  assign el2_mem_export.clk             = clk;
   assign el2_mem_export.iccm_clken      = '0;
   assign el2_mem_export.iccm_wren_bank  = '0;
   assign el2_mem_export.iccm_addr_bank  = '0;

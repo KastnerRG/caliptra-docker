@@ -186,8 +186,7 @@ MULTI_LIB_OF = {
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mldsa caliptra_rtl_lib",
     ),
-    # T4 — hw_config: reads CPTRA_HW_CONFIG register, checks ITRNG/LMS/SUBSYSTEM bits
-    "smoke_test_hw_config": ("", ""),
+    # NOTE: smoke_test_hw_config is handled via HW_CONFIG_TESTS below (needs extra FW_CFLAGS)
     # T7 — mldsa_edge: edge-case inputs with direct MLDSA_CTRL, TB inject 0xd7
     "smoke_test_mldsa_edge": (
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
@@ -239,8 +238,50 @@ MULTI_LIB_OF = {
         "hmac/hmac.c aes/aes.c ecc/ecc.c mlkem/mlkem.c keyvault/keyvault.c soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "hmac aes ecc mlkem keyvault soc_ifc caliptra_rtl_lib",
     ),
+    # Warm-reset tests — newly enabled by fb_stdout_ctrl(0xf5/0xf6/0xf7) calling boot_caliptra()
+    "smoke_test_doe_scan": ("", ""),            # T3: DOE scan mode, 4 warm resets, no lib
+    "smoke_test_wdt": ("", ""),                 # T4: WDT timeout/NMI, 1 warm reset
+    "smoke_test_kv_uds_reset": ("", ""),        # T3: UDS KV across warm reset
+    "pv_hash_reset": (                           # T2: PCR hash across warm reset
+        "sha512/sha512.c keyvault/keyvault.c",
+        "sha512 keyvault",
+    ),
+    "smoke_test_datavault_reset": (              # T2: DV state across warm/cold reset
+        "datavault/datavault.c",
+        "datavault",
+    ),
+    "smoke_test_mldsa_zeroize": (               # T7: ML-DSA zeroize (uses warm reset)
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_errortrigger2": (           # T3: ECC error inject (2 warm resets)
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_errortrigger3": (           # T3: ECC error inject #3 (2 warm resets)
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_errortrigger4": (           # T3: ECC error inject #4 (2 warm resets)
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_ecc_errortrigger5": (           # T3: ECC error inject #5 (2 warm resets)
+        "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc caliptra_rtl_lib",
+    ),
+    "smoke_test_kv_crypto_flow2": (             # T3: crypto chain variant with warm resets
+        "ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c doe/doe.c mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "ecc hmac sha512 sha256 doe mldsa caliptra_rtl_lib",
+    ),
 }
-TESTS = list(LIB_OF) + list(MULTI_LIB_OF)
+
+# Tests needing extra FW CFLAGS (e.g. hardware config defines).
+# Each entry: test_name -> (lib_srcs, lib_dirs, fw_cflags_extra)
+HW_CONFIG_TESTS = {
+    "smoke_test_hw_config": ("", "", r"FB_FW_CFLAGS=-DCALIPTRA_HWCONFIG_TRNG_EN\ -DCALIPTRA_HWCONFIG_LMS_EN\ -DCALIPTRA_HW_REV_ID=0x0212"),
+}
+TESTS = list(LIB_OF) + list(MULTI_LIB_OF) + list(HW_CONFIG_TESTS)
 if len(sys.argv) > 1:           # optional subset: exp_speedup_ahb.py test1 test2 ...
     TESTS = sys.argv[1:]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -291,7 +332,15 @@ for test in TESTS:
         d.mkdir(parents=True, exist_ok=True)
 
     base_vars = f"TESTNAME={test}"
-    if test in MULTI_LIB_OF:
+    extra_fw_cflags = ""
+    if test in HW_CONFIG_TESTS:
+        srcs_rel, dirs_rel, extra_fw_cflags = HW_CONFIG_TESTS[test]
+        srcs = " ".join(f"{LIBROOT}/{s}" for s in srcs_rel.split()) if srcs_rel else ""
+        dirs = " ".join(f"{LIBROOT}/{d}" for d in dirs_rel.split()) if dirs_rel else ""
+        fb_vars = (f'{base_vars} FB_HAL=1 {extra_fw_cflags} '
+                   f'"FB_FW_LIB_SRCS={srcs}" '
+                   f'"FB_FW_LIB_DIRS={dirs}"')
+    elif test in MULTI_LIB_OF:
         srcs_rel, dirs_rel = MULTI_LIB_OF[test]
         srcs = " ".join(f"{LIBROOT}/{s}" for s in srcs_rel.split())
         dirs = " ".join(f"{LIBROOT}/{d}" for d in dirs_rel.split())
