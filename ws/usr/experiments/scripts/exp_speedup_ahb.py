@@ -186,10 +186,28 @@ MULTI_LIB_OF = {
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mldsa caliptra_rtl_lib",
     ),
-    "smoke_test_mldsa_sign_rnd": (
+    # T7 — smoke_test_mldsa: full keygen+sign+verify flow
+    "smoke_test_mldsa": (
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mldsa caliptra_rtl_lib",
     ),
+    # T7 — mldsa_locked_api (same fix as mlkem_locked_api)
+    "smoke_test_mldsa_locked_api": (
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    # T7 — mldsa_externalmu variants
+    "smoke_test_mldsa_externalmu": (
+        "mldsa/mldsa.c sha3/sha3.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa sha3 caliptra_rtl_lib",
+    ),
+    "smoke_test_mldsa_externalmu_keygen_sign_vfy_rand": (
+        "mldsa/mldsa.c sha3/sha3.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa sha3 caliptra_rtl_lib",
+    ),
+    # T4 — QSPI and UART peripheral tests (pass immediately if peripheral not enabled in HW config)
+    "smoke_test_qspi": ("", ""),
+    "smoke_test_uart": ("", ""),
     # T2 — PCR signing (TB inject sets up ECC key via KV slot, then PCR sign)
     "smoke_test_pcr_signing": (
         "ecc/ecc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
