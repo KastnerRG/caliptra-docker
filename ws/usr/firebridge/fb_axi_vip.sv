@@ -112,7 +112,8 @@ module fb_axi_vip #(
 		    OPT_LOCK          = 1'b0,
 		    OPT_LOCKID        = 1'b1,
 		    OPT_LOWPOWER      = 1'b0,
-		    FB_AXI_TIMEOUT    = 100000,
+		    // 10us@1ps: covers cptra_pwrgood=0 cold-reset (20 cyc) + slave re-init
+		    FB_AXI_TIMEOUT    = 10000000,
 		    FB_AXI_RESP_TIMEOUT = 10000000,
 		    S_AXI0_DATA_WIDTH = S_AXI_DATA_WIDTH[0],
 		    S_BYTES           = (S_AXI0_DATA_WIDTH/8),

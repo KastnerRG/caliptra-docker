@@ -240,7 +240,9 @@ MULTI_LIB_OF = {
     ),
     # Warm-reset tests — newly enabled by fb_stdout_ctrl(0xf5/0xf6/0xf7) calling boot_caliptra()
     "smoke_test_doe_scan": ("", ""),            # T3: DOE scan mode, 4 warm resets, no lib
-    "smoke_test_wdt": ("", ""),                 # T4: WDT timeout/NMI, 1 warm reset
+    "smoke_test_wdt": ("wdt/wdt.c", "wdt"),              # T4: WDT timeout/NMI, warm reset
+    "smoke_test_wdt_rst": ("wdt/wdt.c", "wdt"),          # T4: WDT reset path
+    # smoke_test_cg_wdt broken: uses VeeR CSR inline asm (csrwi/csrw) for clk_gate — can't compile on x86
     "smoke_test_kv_uds_reset": ("", ""),        # T3: UDS KV across warm reset
     "pv_hash_reset": (                           # T2: PCR hash across warm reset
         "sha512/sha512.c keyvault/keyvault.c",
