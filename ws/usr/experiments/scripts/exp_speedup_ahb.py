@@ -276,6 +276,60 @@ MULTI_LIB_OF = {
         "ecc/ecc.c hmac/hmac.c sha512/sha512.c sha256/sha256.c doe/doe.c mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "ecc hmac sha512 sha256 doe mldsa caliptra_rtl_lib",
     ),
+    # T7 — MLDSA/MLKEM error triggers
+    "smoke_test_mldsa_errortrigger": (          # T7: MLDSA error injection (privkey loop fixed)
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
+    "smoke_test_mlkem_errortrigger": (          # T7: ML-KEM error injection
+        "mlkem/mlkem.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mlkem caliptra_rtl_lib",
+    ),
+    "smoke_test_zeroize_crypto": (              # T7: zeroize crypto state
+        "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "hmac caliptra_rtl_lib",
+    ),
+    # T5 — AXI DMA tests (M-side AXI to AXI FIFO/SRAM, with warm reset)
+    "smoke_test_dma": (                         # T5: basic DMA (AHB↔AXI, mbox, FIFO)
+        "soc_ifc/soc_ifc.c",
+        "soc_ifc",
+    ),
+    "smoke_test_dma_aes_gcm": (                 # T5: DMA + AES-GCM encryption
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_short_1_dword": (   # T5: DMA AES-GCM, 1-dword payload
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_short_dword": (     # T5: DMA AES-GCM, short dword
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_cmd_err": (         # T5: DMA AES-GCM command error
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_collision_test": (  # T5: DMA AES-GCM collision
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_rd_enc_axi_err": (  # T5: DMA AES-GCM read enc AXI err
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_wr_enc_axi_err": (  # T5: DMA AES-GCM write enc AXI err
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_gcm_non_gcm_en_dec": (  # T5: DMA AES-GCM non-GCM enc/dec
+        "soc_ifc/soc_ifc.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc aes keyvault caliptra_rtl_lib",
+    ),
+    "smoke_test_dma_aes_kv": (                  # T5: DMA + AES-KV (keyvault)
+        "soc_ifc/soc_ifc.c hmac/hmac.c aes/aes.c keyvault/keyvault.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "soc_ifc hmac aes keyvault caliptra_rtl_lib",
+    ),
     "smoke_test_mbox": (                        # T6: bidirectional mailbox (SOC↔FW)
         "soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "soc_ifc caliptra_rtl_lib",
