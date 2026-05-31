@@ -277,6 +277,10 @@ MULTI_LIB_OF = {
         "ecc hmac sha512 sha256 doe mldsa caliptra_rtl_lib",
     ),
     # T7 — MLDSA/MLKEM error triggers
+    "smoke_test_mldsa_sign_rnd": (              # T7: MLDSA sign with fixed sign_rnd (upstream fixed vectors)
+        "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mldsa caliptra_rtl_lib",
+    ),
     "smoke_test_mldsa_errortrigger": (          # T7: MLDSA error injection (privkey loop fixed)
         "mldsa/mldsa.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mldsa caliptra_rtl_lib",
@@ -391,7 +395,9 @@ def timed(cmd, cwd=None):
 
 
 def make(run_dir, target, extra=""):
-    return f"make -C {run_dir} -f {MAKEFILE} {extra} {target}"
+    # Firmware builds (program.hex) have header-copy race with -j; only verilator-build parallelises safely
+    j = "-j64" if target == "verilator-build" else ""
+    return f"make {j} -C {run_dir} -f {MAKEFILE} {extra} {target}"
 
 
 for test in TESTS:
