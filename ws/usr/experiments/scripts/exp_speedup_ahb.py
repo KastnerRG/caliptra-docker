@@ -285,6 +285,10 @@ MULTI_LIB_OF = {
         "mlkem/mlkem.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "mlkem caliptra_rtl_lib",
     ),
+    "smoke_test_mlkem_shared_key": (            # T7: ML-KEM shared-key check (AES_DATA_DIRECT)
+        "mlkem/mlkem.c hmac/hmac.c aes/aes.c keyvault/keyvault.c soc_ifc/soc_ifc.c caliptra_rtl_lib/caliptra_rtl_lib.c",
+        "mlkem hmac aes keyvault soc_ifc caliptra_rtl_lib",
+    ),
     "smoke_test_zeroize_crypto": (              # T7: zeroize crypto state
         "hmac/hmac.c caliptra_rtl_lib/caliptra_rtl_lib.c",
         "hmac caliptra_rtl_lib",
