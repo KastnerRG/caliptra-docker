@@ -5,4 +5,6 @@ ws/usr/experiments/runs
 
 ws/usr/work/
 *.hex
+*.png
+*.csv
 __pycache__
