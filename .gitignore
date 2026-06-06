@@ -1,9 +1,6 @@
-ws/*.log
-ws/work*
-ws/scripts/*.log
-ws/usr/experiments/runs
-
-ws/usr/work/
+experiments/runs/
+work/
+ws
 *.hex
 *.png
 *.csv

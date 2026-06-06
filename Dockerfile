@@ -18,6 +18,7 @@ RUN apt-get update && \
        build-essential       \
        ca-certificates       \
        curl                  \
+       dc                    \
        debianutils           \
        expat                 \
        flex                  \
@@ -28,6 +29,7 @@ RUN apt-get update && \
        help2man              \
        less                  \
        libexpat1-dev         \
+       libelf1               \
        libfl-dev             \
        libfl2                \
        libgmp-dev            \
@@ -79,12 +81,18 @@ RUN git clone --recursive https://github.com/riscv/riscv-gnu-toolchain -b ${TOOL
     && rm -rf riscv-gnu-toolchain
 
 # Set Caliptra-related environment variables
+# CALIPTRA_WORKSPACE is the root of the mounted repo (caliptra-docker/).
+# Inside the container it is /home/usr/ws; subdirs are:
+#   caliptra-rtl/   firebridge/   experiments/
 ENV CALIPTRA_WORKSPACE=/home/usr/ws
-ENV CALIPTRA_ROOT=${CALIPTRA_WORKSPACE}/usr/caliptra-rtl
+ENV CALIPTRA_ROOT=${CALIPTRA_WORKSPACE}/caliptra-rtl
 ENV ADAMSBRIDGE_ROOT=${CALIPTRA_ROOT}/submodules/adams-bridge
 ENV CALIPTRA_AXI4PC_DIR=${CALIPTRA_ROOT}/src/integration/tb
 ENV CALIPTRA_PRIM_ROOT=${CALIPTRA_ROOT}/src/caliptra_prim_generic
 ENV CALIPTRA_PRIM_MODULE_PREFIX=caliptra_prim_generic
+
+# VCS tool scripts use #!/bin/sh -h (a ksh/bash flag); dash rejects -h.
+RUN ln -sf bash /bin/sh
 
 # Change to non-root user
 ARG USERNAME=usr

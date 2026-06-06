@@ -1,4 +1,4 @@
-[submodule "ws/usr/caliptra-rtl"]
-	path = ws/usr/caliptra-rtl
+[submodule "caliptra-rtl"]
+	path = caliptra-rtl
 	url = git@github.com:KastnerRG/caliptra-rtl.git
-	branch = patch_v2.1
+	branch = firebridgev2

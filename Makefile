@@ -9,20 +9,25 @@ HOSTNAME_VAR := $(shell bash -lc 'echo $${USER:0:3}')
 IMAGE     := caliptra-ubuntu
 CONTAINER := caliptra-$(USR)
 
-SYNOPSYS_ROOT := /tools/Syncopsys
+SYNOPSYS_ROOT := /tools/Synopsys
 VCS_HOME      := /tools/Synopsys/vcs/T-2022.06-SP2-10
 SNPSLMD_LIC   := 1705@its-flexlm-lnx4.ucsd.edu
 VERILATOR_VERSION ?= v5.044
 
+# Host paths: caliptra-docker/ is the workspace root.
+# The Docker container mounts it as /home/usr/ws so directory names are flat:
+#   caliptra-docker/caliptra-rtl  →  /home/usr/ws/caliptra-rtl
+#   caliptra-docker/firebridge    →  /home/usr/ws/firebridge
+#   caliptra-docker/experiments   →  /home/usr/ws/experiments
 HOST_REPO := $(CURDIR)
-HOST_WS   := $(HOST_REPO)/ws
+HOST_WS   := $(strip $(HOST_REPO))
 CONT_WS   := /home/usr/ws
 CONT_HOME := /home/usr
 
-X11_MOUNT := $(if $(wildcard /tmp/.X11-unix),-v /tmp/.X11-unix:/tmp/.X11-unix)
+X11_MOUNT  := $(if $(wildcard /tmp/.X11-unix),-v /tmp/.X11-unix:/tmp/.X11-unix)
 WSLG_MOUNT := $(if $(wildcard /mnt/wslg),-v /mnt/wslg:/mnt/wslg)
 XAUTH_MOUNT := $(if $(wildcard $(HOME)/.Xauthority),-e XAUTHORITY=$(CONT_HOME)/.Xauthority -v $(HOME)/.Xauthority:$(CONT_HOME)/.Xauthority)
-VCS_MOUNT := -v $(SYNOPSYS_ROOT):/tools/Synopsys:ro
+VCS_MOUNT  := -v $(SYNOPSYS_ROOT):/tools/Synopsys:ro
 
 .PHONY: fresh restart image build start enter kill submodules
 
@@ -44,8 +49,8 @@ image: submodules
 		-t $(IMAGE) .
 
 submodules:
-	@if [ -d ws/usr/caliptra-rtl/.git ] || [ -f ws/usr/caliptra-rtl/.git ]; then \
-		git -C ws/usr/caliptra-rtl submodule update --init --recursive; \
+	@if [ -d caliptra-rtl/.git ] || [ -f caliptra-rtl/.git ]; then \
+		git -C caliptra-rtl submodule update --init --recursive; \
 	else \
 		git submodule update --init --recursive; \
 	fi
@@ -72,4 +77,8 @@ enter:
 
 kill:
 	- docker kill $(CONTAINER) || true
-	- docker rm $(CONTAINER) || true
+	- docker rm   $(CONTAINER) || true
+
+# Include FireBridge build and speedup targets.
+# These define: build, run, time_test  with  TEST=, FB=, FROM_SCRATCH=, SIM=
+include firebridge/firebridge.mk
